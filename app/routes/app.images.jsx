@@ -1077,12 +1077,15 @@ export default function ProductImageOptimisation() {
                               <th style={{ width: "60px" }}>Image</th>
                               <th>Product</th>
                               <th>Image Alt Text</th>
+                              <th>Image Asset Filename</th>
                             </tr>
                           </thead>
                           <tbody>
                             {currentResults.list
                               .filter(img => !filterMissing || !img.hasAlt)
                               .map((img) => {
+                                const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
+                                const poorFn = isPoorFilename(currentFn);
                                 const isProcessing = processingIds.has(img.mediaId);
                                 const isCompleted = completedIds.has(img.mediaId);
                                 const rowClass = isProcessing
@@ -1126,6 +1129,16 @@ export default function ProductImageOptimisation() {
                                       {!img.hasAlt && (
                                         <div style={{ fontSize: "11px", color: "var(--llm-primary)", marginTop: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
                                           <span style={{ fontSize: "12px" }}>💡</span> Suggested: <span style={{ color: "#7c3aed" }}>{img.suggestedAlt}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <div style={{ fontSize: "12px" }}>
+                                        <code>{truncateFilename(currentFn, 24)}</code>
+                                      </div>
+                                      {poorFn && (
+                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
+                                          ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
                                         </div>
                                       )}
                                     </td>
