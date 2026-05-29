@@ -409,28 +409,10 @@ export default function ProductImageOptimisation() {
 
         setImagesList(prev => prev.map(item => {
           if (item.mediaId === img.mediaId) {
-            let newUrl = item.imageUrl;
-            if (item.imageUrl && img.suggestedFilename) {
-              try {
-                const urlObj = new URL(item.imageUrl);
-                const pathParts = urlObj.pathname.split('/');
-                pathParts[pathParts.length - 1] = img.suggestedFilename;
-                urlObj.pathname = pathParts.join('/');
-                newUrl = urlObj.toString();
-              } catch (e) {
-                const lastSlash = item.imageUrl.lastIndexOf('/');
-                if (lastSlash !== -1) {
-                  const queryIndex = item.imageUrl.indexOf('?', lastSlash);
-                  const base = item.imageUrl.substring(0, lastSlash + 1);
-                  const query = queryIndex !== -1 ? item.imageUrl.substring(queryIndex) : '';
-                  newUrl = base + img.suggestedFilename + query;
-                }
-              }
-            }
             return {
               ...item,
               currentAlt: img.suggestedAlt,
-              imageUrl: newUrl,
+              currentFilename: img.suggestedFilename,
               hasAlt: true,
               status: "Optimized"
             };
@@ -524,14 +506,18 @@ export default function ProductImageOptimisation() {
       }
     });
 
+    const totalFilteredCount = list.length;
+    const displayedList = list.slice(0, 30);
+
     return {
-      list,
+      list: displayedList,
       totalScanned,
       missingAlt,
       readyToFix,
       optimized,
       poorFilenames: poorFilenamesCount,
       duplicateAlts: duplicateAltCount,
+      totalFilteredCount,
     };
   };
 
@@ -1220,23 +1206,33 @@ export default function ProductImageOptimisation() {
                       borderBottom: "1px solid var(--llm-card-border)",
                       marginBottom: "16px"
                     }}>
-                      {/* Segmented Switcher */}
-                      <div className="llm-segmented-tabs">
+                      {/* Segmented Switcher & Select All Button */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <div className="llm-segmented-tabs">
+                          <button
+                            type="button"
+                            className={`llm-tab-btn ${!filterMissing ? "active" : ""}`}
+                            onClick={() => setFilterMissing(false)}
+                          >
+                            <span>All Scanned</span>
+                            <span className="llm-tab-badge">{totalAllCount}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`llm-tab-btn ${filterMissing ? "active" : ""}`}
+                            onClick={() => setFilterMissing(true)}
+                          >
+                            <span>Missing Alt Text</span>
+                            <span className="llm-tab-badge">{totalMissingCount}</span>
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          className={`llm-tab-btn ${!filterMissing ? "active" : ""}`}
-                          onClick={() => setFilterMissing(false)}
+                          className="llm-btn llm-btn-outline llm-btn-sm"
+                          onClick={toggleSelectAll}
+                          style={{ height: "32px", fontSize: "12px", fontWeight: "600" }}
                         >
-                          <span>All Scanned</span>
-                          <span className="llm-tab-badge">{totalAllCount}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`llm-tab-btn ${filterMissing ? "active" : ""}`}
-                          onClick={() => setFilterMissing(true)}
-                        >
-                          <span>Missing Alt Text</span>
-                          <span className="llm-tab-badge">{totalMissingCount}</span>
+                          {currentResults.list.length > 0 && currentResults.list.every(img => selectedImages[img.mediaId]) ? "Deselect All" : "Select All"}
                         </button>
                       </div>
 
@@ -1301,7 +1297,7 @@ export default function ProductImageOptimisation() {
                           </thead>
                           <tbody>
                             {currentResults.list.map((img) => {
-                              const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
+                              const currentFn = img.currentFilename || (img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None");
                               const poorFn = isPoorFilename(currentFn);
                               const isProcessing = processingIds.has(img.mediaId);
                               const isCompleted = completedIds.has(img.mediaId);
@@ -1431,6 +1427,20 @@ export default function ProductImageOptimisation() {
                             })}
                           </tbody>
                         </table>
+                        {currentResults.totalFilteredCount > 30 && (
+                          <div style={{
+                            textAlign: "center",
+                            padding: "16px",
+                            background: "#f8fafc",
+                            borderTop: "1px solid var(--llm-card-border)",
+                            fontSize: "12.5px",
+                            color: "#64748b",
+                            fontWeight: "600",
+                            borderRadius: "0 0 8px 8px"
+                          }}>
+                            Showing first 30 of {currentResults.totalFilteredCount} products. Optimize these to load more.
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
