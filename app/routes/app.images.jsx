@@ -189,6 +189,13 @@ export default function ProductImageOptimisation() {
   // Console Logging states
   const [scanLogs, setScanLogs] = useState([]);
 
+  // Animation states for active optimizations
+  const [processingIds, setProcessingIds] = useState(new Set());
+  const [completedIds, setCompletedIds] = useState(new Set());
+  const [bulkState, setBulkState] = useState('idle'); // 'idle' | 'optimizing' | 'syncing'
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [syncingId, setSyncingId] = useState(null);
+
 
   // Inline status banner — replaces rapid right-side toasts
   const [statusBanner, setStatusBanner] = useState(null); // { type: 'success'|'error', msg: string }
@@ -200,6 +207,13 @@ export default function ProductImageOptimisation() {
   };
 
   const isWorking = ["loading", "submitting"].includes(fetcher.state);
+
+  useEffect(() => {
+    if (!isWorking) {
+      setBulkState('idle');
+      setSyncingId(null);
+    }
+  }, [isWorking]);
 
   // Sync images list from loader when loader data changes, but not while a mutation is in progress
   useEffect(() => {
@@ -333,25 +347,61 @@ export default function ProductImageOptimisation() {
   };
 
   const applySingle = (img) => {
-    // Optimistically update the item immediately (instant feedback)
-    setImagesList(prev => prev.map(item => {
-      if (item.mediaId === img.mediaId) {
-        return {
-          ...item,
-          currentAlt: img.suggestedAlt,
-          hasAlt: true,
-          status: "Optimized"
-        };
-      }
-      return item;
-    }));
+    // 1. Add to processing set immediately
+    setProcessingIds(prev => {
+      const next = new Set(prev);
+      next.add(img.mediaId);
+      return next;
+    });
 
-    fetcher.submit({
-      intent: "fix-single",
-      productId: img.productId,
-      mediaId: img.mediaId,
-      altText: img.suggestedAlt
-    }, { method: "POST" });
+    // 2. Wait 600ms (satisfying processing spin)
+    setTimeout(() => {
+      // 3. Move from processing to completed set
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(img.mediaId);
+        return next;
+      });
+      setCompletedIds(prev => {
+        const next = new Set(prev);
+        next.add(img.mediaId);
+        return next;
+      });
+
+      // 4. Update state optimistically
+      setImagesList(prev => prev.map(item => {
+        if (item.mediaId === img.mediaId) {
+          return {
+            ...item,
+            currentAlt: img.suggestedAlt,
+            hasAlt: true,
+            status: "Optimized"
+          };
+        }
+        return item;
+      }));
+
+      // Set the syncing ID for button feedback
+      setSyncingId(img.mediaId);
+
+      // 5. Submit to Shopify
+      fetcher.submit({
+        intent: "fix-single",
+        productId: img.productId,
+        mediaId: img.mediaId,
+        altText: img.suggestedAlt
+      }, { method: "POST" });
+
+      // 6. Fade the completion green flash styling after 1 second
+      setTimeout(() => {
+        setCompletedIds(prev => {
+          const next = new Set(prev);
+          next.delete(img.mediaId);
+          return next;
+        });
+      }, 1000);
+
+    }, 600);
   };
 
   const applyBulk = (imageList) => {
@@ -361,25 +411,78 @@ export default function ProductImageOptimisation() {
       return;
     }
 
-    // Optimistically update all targets immediately
-    const targetMediaIds = new Set(targets.map(t => t.mediaId));
-    setImagesList(prev => prev.map(item => {
-      if (targetMediaIds.has(item.mediaId)) {
-        return {
-          ...item,
-          currentAlt: item.suggestedAlt,
-          hasAlt: true,
-          status: "Optimized"
-        };
-      }
-      return item;
-    }));
     setSelectedImages({});
+    setBulkState('optimizing');
+    setBulkProgress({ current: 0, total: targets.length });
 
-    fetcher.submit({
-      intent: "fix-bulk",
-      imagesJson: JSON.stringify(targets)
-    }, { method: "POST" });
+    // Let's run a sequential, row-by-row animation queue (400ms per row)
+    let index = 0;
+
+    const processNext = () => {
+      if (index >= targets.length) {
+        // Once ALL animations complete, submit the single bulk request to Shopify
+        setBulkState('syncing');
+        fetcher.submit({
+          intent: "fix-bulk",
+          imagesJson: JSON.stringify(targets)
+        }, { method: "POST" });
+        return;
+      }
+
+      const img = targets[index];
+      
+      // Step A: Mark as processing
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.add(img.mediaId);
+        return next;
+      });
+
+      // Step B: Transition to completed & optimistic state after 400ms
+      setTimeout(() => {
+        setProcessingIds(prev => {
+          const next = new Set(prev);
+          next.delete(img.mediaId);
+          return next;
+        });
+        setCompletedIds(prev => {
+          const next = new Set(prev);
+          next.add(img.mediaId);
+          return next;
+        });
+
+        setImagesList(prev => prev.map(item => {
+          if (item.mediaId === img.mediaId) {
+            return {
+              ...item,
+              currentAlt: img.suggestedAlt,
+              hasAlt: true,
+              status: "Optimized"
+            };
+          }
+          return item;
+        }));
+
+        // Update progress
+        setBulkProgress(prev => ({ ...prev, current: index + 1 }));
+
+        // Trigger next row
+        index++;
+        processNext();
+
+        // Clear green flash styling for this row after 1 second
+        setTimeout(() => {
+          setCompletedIds(prev => {
+            const next = new Set(prev);
+            next.delete(img.mediaId);
+            return next;
+          });
+        }, 1000);
+
+      }, 400);
+    };
+
+    processNext();
   };
 
   const handleScanAll = () => {
@@ -481,6 +584,57 @@ export default function ProductImageOptimisation() {
   return (
     <s-page heading="Product Image Optimisation">
       <div className="llm-page llm-fade-in">
+        <style>{`
+          @keyframes pulse-purple {
+            0% { background-color: rgba(92, 106, 196, 0.03); }
+            50% { background-color: rgba(92, 106, 196, 0.12); }
+            100% { background-color: rgba(92, 106, 196, 0.03); }
+          }
+          @keyframes flash-green {
+            0% { background-color: rgba(34, 197, 94, 0.18); }
+            100% { background-color: transparent; }
+          }
+          @keyframes badge-pulse {
+            0% { opacity: 0.7; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1.05); }
+          }
+          @keyframes button-pulse {
+            0% { opacity: 0.8; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
+            50% { opacity: 1; box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.1); }
+            100% { opacity: 0.8; box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
+          }
+          @keyframes slide-in {
+            0% { opacity: 0; transform: translateY(8px); }
+            100% { opacity: 1; transform: translateY(0); }
+          }
+          .llm-row-processing {
+            animation: pulse-purple 1.5s infinite ease-in-out;
+          }
+          .llm-row-completed {
+            animation: flash-green 1s forwards ease-out;
+          }
+          .llm-badge-processing {
+            background: #7c3aed !important;
+            color: white !important;
+            animation: badge-pulse 0.6s infinite alternate ease-in-out;
+          }
+          .llm-btn-pulse {
+            animation: button-pulse 1.2s infinite ease-in-out;
+            background: #7c3aed !important;
+          }
+          .llm-text-slide-in {
+            animation: slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            display: inline-block;
+          }
+          @keyframes syncing-pulse-text {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+          }
+          .llm-syncing-pulse {
+            animation: syncing-pulse-text 1s infinite ease-in-out;
+          }
+        `}</style>
         
           <div className="llm-fade-in">
             {/* Settings panel — always open */}
@@ -914,20 +1068,60 @@ export default function ProductImageOptimisation() {
                   </div>
 
                   {/* Action buttons */}
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <button
-                      className="llm-btn llm-btn-primary"
-                      onClick={handleFixAll}
-                      disabled={isWorking || currentResults.missingAlt === 0}
-                    >
-                      {isWorking ? "Optimizing..." : "Bulk Optimize Alt Text"}
-                    </button>
-                    <button
-                      className="llm-btn llm-btn-outline"
-                      onClick={() => setShowTable(!showTable)}
-                    >
-                      {showTable ? "Hide Scanned Details" : "Review Scanned Details"}
-                    </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        className={`llm-btn llm-btn-primary ${bulkState === 'syncing' ? "llm-btn-pulse" : ""}`}
+                        onClick={handleFixAll}
+                        disabled={isWorking || bulkState !== 'idle' || currentResults.missingAlt === 0}
+                      >
+                        {bulkState === 'optimizing' ? (
+                          <span>Optimizing... ({bulkProgress.current}/{bulkProgress.total})</span>
+                        ) : bulkState === 'syncing' ? (
+                          <span className="llm-syncing-pulse">Syncing to Shopify...</span>
+                        ) : isWorking ? (
+                          "Syncing..."
+                        ) : (
+                          "Bulk Optimize Alt Text"
+                        )}
+                      </button>
+                      <button
+                        className="llm-btn llm-btn-outline"
+                        onClick={() => setShowTable(!showTable)}
+                      >
+                        {showTable ? "Hide Scanned Details" : "Review Scanned Details"}
+                      </button>
+                    </div>
+
+                    {bulkState !== 'idle' && (
+                      <div style={{
+                        marginTop: "4px",
+                        padding: "16px",
+                        background: "var(--llm-surface)",
+                        borderRadius: "8px",
+                        border: "1px solid var(--llm-card-border)",
+                        animation: "logFadeIn 0.3s ease-out",
+                        width: "100%"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", fontSize: "13px" }}>
+                          <span style={{ fontWeight: 600, color: "var(--llm-primary)" }}>
+                            {bulkState === 'optimizing' ? "⚡ Running AI Alt Text Optimizations..." : "🔄 Syncing Optimized Alt Text to Shopify..."}
+                          </span>
+                          <span style={{ fontWeight: 700 }}>
+                            {bulkProgress.current} / {bulkProgress.total} Images
+                          </span>
+                        </div>
+                        <div style={{ height: "8px", background: "rgba(92, 106, 196, 0.1)", borderRadius: "4px", overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                            background: "linear-gradient(90deg, var(--llm-primary), #a855f7)",
+                            borderRadius: "4px",
+                            transition: "width 0.3s ease-out"
+                          }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -947,11 +1141,19 @@ export default function ProductImageOptimisation() {
                           {filterMissing ? "Showing: Missing Only" : "Filter: Missing Description"}
                         </button>
                         <button
-                          className="llm-btn llm-btn-primary llm-btn-sm"
+                          className={`llm-btn llm-btn-primary llm-btn-sm ${bulkState === 'syncing' ? "llm-btn-pulse" : ""}`}
                           onClick={handleFixSelected}
-                          disabled={isWorking || Object.keys(selectedImages).filter(k => selectedImages[k]).length === 0}
+                          disabled={isWorking || bulkState !== 'idle' || Object.keys(selectedImages).filter(k => selectedImages[k]).length === 0}
                         >
-                          Optimize Selected ({Object.keys(selectedImages).filter(k => selectedImages[k]).length})
+                          {bulkState === 'optimizing' ? (
+                            <span>Optimizing... ({bulkProgress.current}/{bulkProgress.total})</span>
+                          ) : bulkState === 'syncing' ? (
+                            <span className="llm-syncing-pulse">Syncing...</span>
+                          ) : isWorking ? (
+                            "Syncing..."
+                          ) : (
+                            `Optimize Selected (${Object.keys(selectedImages).filter(k => selectedImages[k]).length})`
+                          )}
                         </button>
                       </div>
                     </div>
@@ -971,6 +1173,7 @@ export default function ProductImageOptimisation() {
                                   type="checkbox"
                                   checked={currentResults.list.filter(img => !filterMissing || !img.hasAlt).length > 0 && currentResults.list.filter(img => !filterMissing || !img.hasAlt).every(img => selectedImages[img.mediaId])}
                                   onChange={toggleSelectAll}
+                                  disabled={bulkState !== 'idle'}
                                 />
                               </th>
                               <th style={{ width: "60px" }}>Image</th>
@@ -988,13 +1191,21 @@ export default function ProductImageOptimisation() {
                               .map((img) => {
                                 const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
                                 const poorFn = isPoorFilename(currentFn);
+                                const isProcessing = processingIds.has(img.mediaId);
+                                const isCompleted = completedIds.has(img.mediaId);
+                                const rowClass = isProcessing
+                                  ? "llm-row-processing"
+                                  : isCompleted
+                                  ? "llm-row-completed"
+                                  : "";
                                 return (
-                                  <tr key={img.mediaId}>
+                                  <tr key={img.mediaId} className={rowClass} style={{ transition: "background-color 0.5s ease-out" }}>
                                     <td style={{ paddingRight: 0, verticalAlign: "middle" }}>
                                       <input
                                         type="checkbox"
                                         checked={!!selectedImages[img.mediaId]}
                                         onChange={() => toggleSelectImage(img.mediaId)}
+                                        disabled={isProcessing || bulkState !== 'idle'}
                                       />
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
@@ -1014,7 +1225,10 @@ export default function ProductImageOptimisation() {
                                       <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
-                                      <span style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}>
+                                      <span
+                                        className={isCompleted ? "llm-text-slide-in" : ""}
+                                        style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}
+                                      >
                                         {img.currentAlt || "Missing Label"}
                                       </span>
                                     </td>
@@ -1034,18 +1248,24 @@ export default function ProductImageOptimisation() {
                                       </span>
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
-                                      <span className={`llm-badge ${img.hasAlt ? "llm-badge-success" : "llm-badge-warning"}`} style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center" }}>
-                                        {img.status === "Optimized" || img.hasAlt ? "AI Ready" : "Unoptimized"}
-                                      </span>
+                                      {isProcessing ? (
+                                        <span className="llm-badge llm-badge-processing" style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center", background: "var(--llm-primary)", color: "white" }}>
+                                          AI Writing...
+                                        </span>
+                                      ) : (
+                                        <span className={`llm-badge ${img.hasAlt ? "llm-badge-success" : "llm-badge-warning"}`} style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center" }}>
+                                          {img.status === "Optimized" || img.hasAlt ? "AI Ready" : "Unoptimized"}
+                                        </span>
+                                      )}
                                     </td>
                                     <td style={{ verticalAlign: "middle", textAlign: "right" }}>
                                       <button
-                                        className="llm-btn llm-btn-primary llm-btn-sm"
+                                        className={`llm-btn llm-btn-primary llm-btn-sm ${isProcessing ? "llm-btn-pulse" : (syncingId === img.mediaId ? "llm-btn-pulse" : "")}`}
                                         onClick={() => applySingle(img)}
-                                        disabled={isWorking}
+                                        disabled={isWorking || isProcessing || bulkState !== 'idle'}
                                         style={{ minWidth: "80px" }}
                                       >
-                                        {isWorking ? "Syncing..." : "Approve"}
+                                        {isProcessing ? "Writing..." : (syncingId === img.mediaId ? "Syncing..." : "Approve")}
                                       </button>
                                     </td>
                                   </tr>
