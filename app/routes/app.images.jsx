@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -200,6 +200,7 @@ export default function ProductImageOptimisation() {
   const [completedIds, setCompletedIds] = useState(new Set());
   const [bulkState, setBulkState] = useState('idle'); // 'idle' | 'optimizing' | 'syncing'
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const isBulkActiveRef = useRef(false);
 
 
   // Inline status banner — replaces rapid right-side toasts
@@ -216,6 +217,7 @@ export default function ProductImageOptimisation() {
   useEffect(() => {
     if (!isWorking) {
       setBulkState('idle');
+      isBulkActiveRef.current = false;
     }
   }, [isWorking]);
 
@@ -361,12 +363,14 @@ export default function ProductImageOptimisation() {
 
 
   const applyBulk = (imageList) => {
+    if (isBulkActiveRef.current) return;
     const targets = imageList.filter(img => !img.hasAlt || selectedImages[img.mediaId]);
     if (targets.length === 0) {
       showBanner('error', 'No images selected or all already have alt text.');
       return;
     }
 
+    isBulkActiveRef.current = true;
     setSelectedImages({});
     setBulkState('optimizing');
     setBulkProgress({ current: 0, total: targets.length });
@@ -378,6 +382,7 @@ export default function ProductImageOptimisation() {
       if (index >= targets.length) {
         // Once ALL animations complete, submit the single bulk request to Shopify
         setBulkState('syncing');
+        isBulkActiveRef.current = false;
         fetcher.submit({
           intent: "fix-bulk",
           imagesJson: JSON.stringify(targets)
@@ -543,7 +548,7 @@ export default function ProductImageOptimisation() {
   const handleFixAll = () => {
     const listToFix = selectedCount > 0 
       ? currentResults.list.filter(img => selectedImages[img.mediaId])
-      : currentResults.list.filter(img => !img.hasAlt);
+      : imagesList.filter(img => !img.hasAlt);
     applyBulk(listToFix);
   };
 
