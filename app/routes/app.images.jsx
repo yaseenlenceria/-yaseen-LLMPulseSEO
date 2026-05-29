@@ -174,9 +174,8 @@ export default function ProductImageOptimisation() {
 
   const [imagesList, setImagesList] = useState(initialImages);
   const [altTemplate, setAltTemplate] = useState(settings.altTemplate);
-  const [filenameTemplate, setFilenameTemplate] = useState(settings.filenameTemplate);
+  const [filenameTemplate] = useState(settings.filenameTemplate);
   const [altError, setAltError] = useState("");
-  const [fileError, setFileError] = useState("");
   const [filterMissing, setFilterMissing] = useState(false);
   const [selectedImages, setSelectedImages] = useState({});
 
@@ -236,10 +235,7 @@ export default function ProductImageOptimisation() {
     setAltError(val.valid ? "" : val.error);
   }, [altTemplate]);
 
-  useEffect(() => {
-    const val = validateTemplate(filenameTemplate);
-    setFileError(val.valid ? "" : val.error);
-  }, [filenameTemplate]);
+
 
   // Live-recompute suggestions in the table whenever templates change
   // This makes the table a live preview of the current template settings
@@ -337,7 +333,7 @@ export default function ProductImageOptimisation() {
   }, [scanState]);
 
   const saveSettings = () => {
-    if (altError || fileError) {
+    if (altError) {
       shopify.toast.show("Please fix validation errors first.");
       return;
     }
@@ -582,11 +578,11 @@ export default function ProductImageOptimisation() {
             {/* Settings panel — always open */}
             <div className="llm-card" style={{ marginBottom: "24px" }}>
               <div className="llm-card-head">
-                <h2>Image Description &amp; Asset Filename Templates</h2>
-                <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
+                <h2>Image Description Template</h2>
+                <p>Define rules for auto-generating missing product image alt text descriptions.</p>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
+              <div style={{ marginBottom: "16px" }}>
                 <div>
                   <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
                     Image Description Template
@@ -603,39 +599,7 @@ export default function ProductImageOptimisation() {
                     <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
                     {[
                       { label: "Product Name Only", value: "#product_name#" },
-                      { label: "Name & Category", value: "#product_name# - #product_type#" },
-                      { label: "Name & Brand", value: "#product_name# by #product_vendor#" },
-                    ].map(preset => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        className="llm-btn llm-btn-outline llm-btn-sm"
-                        style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                        onClick={() => setAltTemplate(preset.value)}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                    Image Asset Filename Template
-                  </label>
-                  <input
-                    id="filename-template-input"
-                    className="llm-input"
-                    value={filenameTemplate}
-                    onChange={(e) => setFilenameTemplate(e.target.value)}
-                    placeholder="#product_name# - #product_vendor#"
-                  />
-                  {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
-                  <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
-                    {[
-                      { label: "Product Name Only", value: "#product_name#" },
-                      { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
+                      { label: "Name & Brand", value: "#product_name# - #product_vendor#" },
                       { label: "SKU Only", value: "#variant_sku#" },
                     ].map(preset => (
                       <button
@@ -643,7 +607,7 @@ export default function ProductImageOptimisation() {
                         type="button"
                         className="llm-btn llm-btn-outline llm-btn-sm"
                         style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                        onClick={() => setFilenameTemplate(preset.value)}
+                        onClick={() => setAltTemplate(preset.value)}
                       >
                         {preset.label}
                       </button>
@@ -664,7 +628,7 @@ export default function ProductImageOptimisation() {
               </div>
 
               <button className="llm-btn llm-btn-primary" onClick={saveSettings} disabled={isWorking}>
-                {isWorking ? "Saving…" : "Save Templates"}
+                {isWorking ? "Saving…" : "Save Settings"}
               </button>
             </div>
 
@@ -1113,16 +1077,12 @@ export default function ProductImageOptimisation() {
                               <th style={{ width: "60px" }}>Image</th>
                               <th>Product</th>
                               <th>Image Alt Text</th>
-                              <th>Image Asset Filename</th>
-                              <th>AI Recommendation</th>
                             </tr>
                           </thead>
                           <tbody>
                             {currentResults.list
                               .filter(img => !filterMissing || !img.hasAlt)
                               .map((img) => {
-                                const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
-                                const poorFn = isPoorFilename(currentFn);
                                 const isProcessing = processingIds.has(img.mediaId);
                                 const isCompleted = completedIds.has(img.mediaId);
                                 const rowClass = isProcessing
@@ -1157,27 +1117,17 @@ export default function ProductImageOptimisation() {
                                       <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
-                                      <span
+                                      <div
                                         className={isCompleted ? "llm-text-slide-in" : ""}
                                         style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}
                                       >
                                         {img.currentAlt || "Missing Label"}
-                                      </span>
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      <div style={{ fontSize: "12px" }}>
-                                        <code>{truncateFilename(currentFn, 24)}</code>
                                       </div>
-                                      {poorFn && (
-                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
-                                          ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
+                                      {!img.hasAlt && (
+                                        <div style={{ fontSize: "11px", color: "var(--llm-primary)", marginTop: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                                          <span style={{ fontSize: "12px" }}>💡</span> Suggested: <span style={{ color: "#7c3aed" }}>{img.suggestedAlt}</span>
                                         </div>
                                       )}
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--llm-primary)" }}>
-                                        {img.suggestedAlt}
-                                      </span>
                                     </td>
                                   </tr>
                                 );
@@ -1186,10 +1136,6 @@ export default function ProductImageOptimisation() {
                         </table>
                       </div>
                     )}
-
-                    <div style={{ marginTop: "14px", fontSize: "12px", color: "var(--llm-on-surface-variant)" }}>
-                      💡 <strong>Note on Filenames:</strong> Shopify locks filenames on upload. Suggested filenames are shown as recommendations for your original asset files before you re-upload them to your Shopify catalog.
-                    </div>
                   </div>
                 )}
               </div>
