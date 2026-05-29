@@ -1002,7 +1002,7 @@ export default function ProductImageOptimisation() {
                   </div>
 
                   {/* Opportunity Grid */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
                     {[
                       {
                         title: "Alt Text Status",
@@ -1019,14 +1019,6 @@ export default function ProductImageOptimisation() {
                         unit: "generic",
                         healthy: currentResults.poorFilenames === 0,
                         progress: currentResults.totalScanned > 0 ? ((currentResults.totalScanned - currentResults.poorFilenames) / currentResults.totalScanned) * 100 : 100,
-                      },
-                      {
-                        title: "Alt Text Uniqueness",
-                        description: "Duplicate labels confuse search engines. Differentiate similar products.",
-                        count: currentResults.duplicateAlts,
-                        unit: "duplicates",
-                        healthy: currentResults.duplicateAlts === 0,
-                        progress: currentResults.totalScanned > 0 ? ((currentResults.totalScanned - currentResults.duplicateAlts) / currentResults.totalScanned) * 100 : 100,
                       }
                     ].map((item, idx) => (
                       <div key={idx} className="llm-card" style={{ padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between", margin: 0 }}>
