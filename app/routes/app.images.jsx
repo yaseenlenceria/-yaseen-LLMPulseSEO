@@ -4,7 +4,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getStoreSettings, saveStoreSettings } from "../lib/settings.server";
-import { fetchProductImages, updateImageAlt } from "../lib/images.server";
+import { fetchProductImages, updateImageMetadata } from "../lib/images.server";
 
 export function validateTemplate(template) {
   const variableRegex = /#([^#]+)#/g;
@@ -120,13 +120,13 @@ export const action = async ({ request }) => {
   }
 
   if (intent === "fix-single") {
-    const productId = formData.get("productId");
     const mediaId = formData.get("mediaId");
     const altText = formData.get("altText");
+    const filename = formData.get("filename");
 
     try {
-      await updateImageAlt(admin, productId, mediaId, altText);
-      return { ok: true, message: "Image description updated on Shopify." };
+      await updateImageMetadata(admin, mediaId, altText, filename);
+      return { ok: true, message: "Image description and filename updated on Shopify." };
     } catch (err) {
       return { ok: false, message: err.message };
     }
@@ -140,7 +140,7 @@ export const action = async ({ request }) => {
 
     for (const img of imagesToUpdate) {
       try {
-        await updateImageAlt(admin, img.productId, img.mediaId, img.suggestedAlt);
+        await updateImageMetadata(admin, img.mediaId, img.suggestedAlt, img.suggestedFilename);
         successCount++;
       } catch (err) {
         failCount++;
@@ -148,7 +148,7 @@ export const action = async ({ request }) => {
       }
     }
 
-    const message = `Bulk update complete. Successfully updated ${successCount} image description(s).` +
+    const message = `Bulk update complete. Successfully optimized ${successCount} image(s) (alt texts and asset filenames updated).` +
       (failCount > 0 ? ` Failed: ${failCount}. Details: ${errors.slice(0, 3).join("; ")}` : "");
 
     return { ok: true, message };
@@ -409,9 +409,28 @@ export default function ProductImageOptimisation() {
 
         setImagesList(prev => prev.map(item => {
           if (item.mediaId === img.mediaId) {
+            let newUrl = item.imageUrl;
+            if (item.imageUrl && img.suggestedFilename) {
+              try {
+                const urlObj = new URL(item.imageUrl);
+                const pathParts = urlObj.pathname.split('/');
+                pathParts[pathParts.length - 1] = img.suggestedFilename;
+                urlObj.pathname = pathParts.join('/');
+                newUrl = urlObj.toString();
+              } catch (e) {
+                const lastSlash = item.imageUrl.lastIndexOf('/');
+                if (lastSlash !== -1) {
+                  const queryIndex = item.imageUrl.indexOf('?', lastSlash);
+                  const base = item.imageUrl.substring(0, lastSlash + 1);
+                  const query = queryIndex !== -1 ? item.imageUrl.substring(queryIndex) : '';
+                  newUrl = base + img.suggestedFilename + query;
+                }
+              }
+            }
             return {
               ...item,
               currentAlt: img.suggestedAlt,
+              imageUrl: newUrl,
               hasAlt: true,
               status: "Optimized"
             };

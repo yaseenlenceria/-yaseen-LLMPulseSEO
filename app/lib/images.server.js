@@ -47,8 +47,26 @@ export const UPDATE_MEDIA_ALT_MUTATION = `#graphql
     }
   }
 `;
-
-
+export const UPDATE_FILE_MUTATION = `#graphql
+  mutation fileUpdate($files: [FileUpdateInput!]!) {
+    fileUpdate(files: $files) {
+      files {
+        id
+        alt
+        ... on MediaImage {
+          id
+          image {
+            url
+          }
+        }
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
 
 export function generateFromTemplate(template, data) {
   const replacements = {
@@ -183,3 +201,32 @@ export async function updateImageAlt(admin, productId, mediaId, altText) {
 
   return { ok: true, mediaId, altText };
 }
+
+export async function updateImageMetadata(admin, mediaId, altText, filename) {
+  const fileInput = { id: mediaId };
+  if (altText !== undefined) {
+    fileInput.alt = altText;
+  }
+  if (filename) {
+    fileInput.filename = filename;
+  }
+
+  const response = await admin.graphql(UPDATE_FILE_MUTATION, {
+    variables: {
+      files: [fileInput]
+    }
+  });
+
+  const payload = await response.json();
+  if (payload.errors?.length) {
+    throw new Error(payload.errors.map((e) => e.message).join("; "));
+  }
+
+  const userErrors = payload.data?.fileUpdate?.userErrors;
+  if (userErrors?.length) {
+    throw new Error(userErrors.map((e) => e.message).join("; "));
+  }
+
+  return { ok: true, mediaId, altText, filename };
+}
+
