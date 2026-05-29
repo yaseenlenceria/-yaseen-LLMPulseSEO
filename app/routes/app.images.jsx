@@ -183,6 +183,7 @@ export default function ProductImageOptimisation() {
   const [altError, setAltError] = useState("");
   const [fileError, setFileError] = useState("");
   const [filterMissing, setFilterMissing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedImages, setSelectedImages] = useState({});
 
   // states for progressive workflow
@@ -462,6 +463,17 @@ export default function ProductImageOptimisation() {
     if (scanType === 'missing') {
       list = imagesList.filter(img => !img.hasAlt);
     }
+    if (filterMissing) {
+      list = list.filter(img => !img.hasAlt);
+    }
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(img => 
+        (img.productName || "").toLowerCase().includes(q) || 
+        (img.currentAlt || "").toLowerCase().includes(q) ||
+        (img.sku || "").toLowerCase().includes(q)
+      );
+    }
 
     const totalScanned = list.length;
     const missingAlt = list.filter(img => !img.hasAlt).length;
@@ -504,6 +516,22 @@ export default function ProductImageOptimisation() {
     };
   };
 
+  const totalAllCount = imagesList.filter(img => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return (img.productName || "").toLowerCase().includes(q) || 
+           (img.currentAlt || "").toLowerCase().includes(q) ||
+           (img.sku || "").toLowerCase().includes(q);
+  }).length;
+
+  const totalMissingCount = imagesList.filter(img => !img.hasAlt).filter(img => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return (img.productName || "").toLowerCase().includes(q) || 
+           (img.currentAlt || "").toLowerCase().includes(q) ||
+           (img.sku || "").toLowerCase().includes(q);
+  }).length;
+
   const currentResults = getDisplayResults();
   const selectedCount = Object.keys(selectedImages).filter(k => selectedImages[k]).length;
 
@@ -527,7 +555,7 @@ export default function ProductImageOptimisation() {
   };
 
   const toggleSelectAll = () => {
-    const visibleList = currentResults.list.filter(img => !filterMissing || !img.hasAlt);
+    const visibleList = currentResults.list;
     const allSelected = visibleList.every(img => selectedImages[img.mediaId]);
     const nextState = {};
     if (!allSelected) {
@@ -591,6 +619,83 @@ export default function ProductImageOptimisation() {
           }
           .llm-syncing-pulse {
             animation: syncing-pulse-text 1s infinite ease-in-out;
+          }
+          .llm-segmented-tabs {
+            display: inline-flex;
+            background: #f1f5f9;
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+          }
+          .llm-tab-btn {
+            border: none;
+            background: transparent;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .llm-tab-btn:hover {
+            color: #334155;
+          }
+          .llm-tab-btn.active {
+            background: #ffffff;
+            color: var(--llm-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          .llm-tab-badge {
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+          }
+          .llm-tab-btn.active .llm-tab-badge {
+            background: rgba(0, 62, 199, 0.08);
+            color: var(--llm-primary);
+          }
+          .llm-img-container {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--llm-card-border);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.25s ease;
+            background: var(--llm-surface);
+          }
+          .llm-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.25s ease;
+          }
+          .llm-img-container:hover {
+            transform: scale(1.08);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+            border-color: var(--llm-primary);
+          }
+          .llm-img-container:hover img {
+            transform: scale(1.15);
+          }
+          .llm-table tbody tr {
+            transition: background-color 0.2s ease;
+          }
+          .llm-table tbody tr:hover {
+            background-color: #f8fafc;
+          }
+          @keyframes slide-up-floating {
+            0% { transform: translate(-50%, 100px); opacity: 0; }
+            100% { transform: translate(-50%, 0); opacity: 1; }
           }
         `}</style>
         
@@ -1079,51 +1184,92 @@ export default function ProductImageOptimisation() {
 
                 {/* STEP 5: Review details */}
                 {showTable && (
-                  <div className="llm-card" style={{ animation: "logFadeIn 0.3s ease-out" }}>
-                    <div className="llm-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", paddingBottom: "12px", borderBottom: "1px solid var(--llm-card-border)" }}>
-                      <div>
-                        <h2>Scanned Images Details</h2>
-                        <p>Review suggested metadata adjustments before pushing to Shopify.</p>
+                  <div className="llm-card" style={{ animation: "logFadeIn 0.3s ease-out", overflow: "visible" }}>
+                    <div className="llm-card-head" style={{ paddingBottom: "12px", borderBottom: "1px solid var(--llm-card-border)", marginBottom: "16px" }}>
+                      <h2>Scanned Images Details</h2>
+                      <p>Review suggested metadata adjustments before pushing to Shopify.</p>
+                    </div>
+
+                    {/* Tabs and Search controls row */}
+                    <div style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "16px",
+                      paddingBottom: "16px",
+                      borderBottom: "1px solid var(--llm-card-border)",
+                      marginBottom: "16px"
+                    }}>
+                      {/* Segmented Switcher */}
+                      <div className="llm-segmented-tabs">
+                        <button
+                          type="button"
+                          className={`llm-tab-btn ${!filterMissing ? "active" : ""}`}
+                          onClick={() => setFilterMissing(false)}
+                        >
+                          <span>All Scanned</span>
+                          <span className="llm-tab-badge">{totalAllCount}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`llm-tab-btn ${filterMissing ? "active" : ""}`}
+                          onClick={() => setFilterMissing(true)}
+                        >
+                          <span>Missing Alt Text</span>
+                          <span className="llm-tab-badge">{totalMissingCount}</span>
+                        </button>
                       </div>
-                      <div style={{ display: "flex", gap: "10px", marginLeft: "auto", flexWrap: "wrap" }}>
-                        <button
-                          className={`llm-btn ${filterMissing ? "llm-btn-primary" : "llm-btn-outline"} llm-btn-sm`}
-                          onClick={() => setFilterMissing(!filterMissing)}
-                        >
-                          {filterMissing ? "Showing: Missing Only" : "Filter: Missing Description"}
-                        </button>
-                        <button
-                          className={`llm-btn llm-btn-primary llm-btn-sm ${bulkState === 'syncing' ? "llm-btn-pulse" : ""}`}
-                          onClick={handleFixSelected}
-                          disabled={isWorking || bulkState !== 'idle' || Object.keys(selectedImages).filter(k => selectedImages[k]).length === 0}
-                        >
-                          {bulkState === 'optimizing' ? (
-                            <span>Optimizing... ({bulkProgress.current}/{bulkProgress.total})</span>
-                          ) : bulkState === 'syncing' ? (
-                            <span className="llm-syncing-pulse">Syncing...</span>
-                          ) : isWorking ? (
-                            "Syncing..."
-                          ) : (
-                            `Optimize Selected (${Object.keys(selectedImages).filter(k => selectedImages[k]).length})`
-                          )}
-                        </button>
+
+                      {/* Search box */}
+                      <div style={{ position: "relative", width: "100%", maxWidth: "300px" }}>
+                        <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: "12px", pointerEvents: "none" }}>
+                          🔍
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search product name, SKU..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="llm-input"
+                          style={{ paddingLeft: "30px", height: "32px", fontSize: "12.5px" }}
+                        />
+                        {searchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchTerm("")}
+                            style={{
+                              position: "absolute",
+                              right: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#94a3b8",
+                              fontSize: "14px"
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {currentResults.list.filter(img => !filterMissing || !img.hasAlt).length === 0 ? (
+                    {currentResults.list.length === 0 ? (
                       <div style={{ padding: "40px 0", textAlign: "center", color: "var(--llm-on-surface-variant)" }}>
                         <p style={{ fontSize: "14px", fontWeight: "600", margin: "0 0 4px 0" }}>No matching images found</p>
                         <p style={{ fontSize: "12.5px", margin: 0 }}>All scanned images match your template settings.</p>
                       </div>
                     ) : (
                       <div className="llm-table-wrap">
-                                        <table className="llm-table">
+                        <table className="llm-table">
                           <thead>
                             <tr>
                               <th style={{ width: "30px", paddingRight: 0 }}>
                                 <input
                                   type="checkbox"
-                                  checked={currentResults.list.filter(img => !filterMissing || !img.hasAlt).length > 0 && currentResults.list.filter(img => !filterMissing || !img.hasAlt).every(img => selectedImages[img.mediaId])}
+                                  checked={currentResults.list.length > 0 && currentResults.list.every(img => selectedImages[img.mediaId])}
                                   onChange={toggleSelectAll}
                                   disabled={bulkState !== 'idle'}
                                 />
@@ -1135,88 +1281,217 @@ export default function ProductImageOptimisation() {
                             </tr>
                           </thead>
                           <tbody>
-                            {currentResults.list
-                              .filter(img => !filterMissing || !img.hasAlt)
-                              .map((img) => {
-                                const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
-                                const poorFn = isPoorFilename(currentFn);
-                                const isProcessing = processingIds.has(img.mediaId);
-                                const isCompleted = completedIds.has(img.mediaId);
-                                const rowClass = isProcessing
-                                  ? "llm-row-processing"
-                                  : isCompleted
-                                  ? "llm-row-completed"
-                                  : "";
-                                return (
-                                  <tr key={img.mediaId} className={rowClass} style={{ transition: "background-color 0.5s ease-out" }}>
-                                    <td style={{ paddingRight: 0, verticalAlign: "middle" }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={!!selectedImages[img.mediaId]}
-                                        onChange={() => toggleSelectImage(img.mediaId)}
-                                        disabled={isProcessing || bulkState !== 'idle'}
-                                      />
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      {img.imageUrl ? (
+                            {currentResults.list.map((img) => {
+                              const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
+                              const poorFn = isPoorFilename(currentFn);
+                              const isProcessing = processingIds.has(img.mediaId);
+                              const isCompleted = completedIds.has(img.mediaId);
+                              const rowClass = isProcessing
+                                ? "llm-row-processing"
+                                : isCompleted
+                                ? "llm-row-completed"
+                                : "";
+                              return (
+                                <tr key={img.mediaId} className={rowClass} style={{ transition: "background-color 0.5s ease-out" }}>
+                                  <td style={{ paddingRight: 0, verticalAlign: "middle" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={!!selectedImages[img.mediaId]}
+                                      onChange={() => toggleSelectImage(img.mediaId)}
+                                      disabled={isProcessing || bulkState !== 'idle'}
+                                    />
+                                  </td>
+                                  <td style={{ verticalAlign: "middle" }}>
+                                    {img.imageUrl ? (
+                                      <div className="llm-img-container">
                                         <img
                                           src={img.imageUrl}
                                           alt=""
-                                          width="50"
-                                          height="50"
-                                          style={{ borderRadius: "6px", objectFit: "cover", border: "1px solid var(--llm-card-border)" }}
                                         />
-                                      ) : (
-                                        <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>No Image</span>
-                                      )}
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      {img.status === "Optimized" ? (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                          <div style={{ fontSize: "11px", color: "var(--llm-outline)", textDecoration: "line-through" }}>
-                                            Was: {img.originalAlt || "Missing Label"}
-                                          </div>
-                                          <div className="llm-text-slide-in" style={{ fontSize: "12px", fontWeight: "700", color: "#16a34a", display: "flex", alignItems: "center", gap: "6px" }}>
-                                            <span>Now:</span> {img.currentAlt}
-                                            <span style={{ fontSize: "10px", background: "#f0fdf4", color: "#16a34a", padding: "1px 6px", borderRadius: "10px", fontWeight: "700" }}>Optimized</span>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <div
-                                            className={isCompleted ? "llm-text-slide-in" : ""}
-                                            style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}
-                                          >
-                                            {img.currentAlt || "Missing Label"}
-                                          </div>
-                                          {!img.hasAlt && (
-                                            <div style={{ fontSize: "11px", color: "var(--llm-primary)", marginTop: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
-                                              <span style={{ fontSize: "12px" }}>💡</span> Suggested: <span style={{ color: "#7c3aed" }}>{img.suggestedAlt}</span>
-                                            </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      <div style={{ fontSize: "12px", wordBreak: "break-all" }}>
-                                        <code>{currentFn}</code>
                                       </div>
-                                      {poorFn && (
-                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600", wordBreak: "break-all" }}>
-                                          ⚠️ Generic Filename (Tip: rename to <code>{img.suggestedFilename}</code> before uploading)
+                                    ) : (
+                                      <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>No Image</span>
+                                    )}
+                                  </td>
+                                  <td style={{ verticalAlign: "middle" }}>
+                                    <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
+                                  </td>
+                                  <td style={{ verticalAlign: "middle" }}>
+                                    {img.status === "Optimized" ? (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#94a3b8" }}>
+                                          <span style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: "3px", textDecoration: "line-through" }}>Was: {img.originalAlt || "No description"}</span>
                                         </div>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
+                                        <div className="llm-text-slide-in" style={{ fontSize: "12.5px", fontWeight: "600", color: "#15803d", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                          <span style={{ background: "#dcfce7", color: "#15803d", padding: "2px 6px", borderRadius: "4px", fontSize: "10.5px", fontWeight: "700" }}>Now</span>
+                                          <span>{img.currentAlt}</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                        {!img.hasAlt ? (
+                                          <>
+                                            <span style={{
+                                              fontSize: "9px",
+                                              background: "#fef2f2",
+                                              color: "#ef4444",
+                                              padding: "2px 6px",
+                                              borderRadius: "4px",
+                                              fontWeight: "700",
+                                              alignSelf: "flex-start",
+                                              border: "1px solid #fee2e2",
+                                              textTransform: "uppercase",
+                                              letterSpacing: "0.03em"
+                                            }}>
+                                              ❌ Missing Alt Text
+                                            </span>
+                                            <div style={{
+                                              fontSize: "12px",
+                                              background: "#f3e8ff",
+                                              border: "1px solid #e9d5ff",
+                                              color: "#6b21a8",
+                                              padding: "6px 10px",
+                                              borderRadius: "6px",
+                                              marginTop: "2px",
+                                              lineHeight: "1.4"
+                                            }}>
+                                              <span style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "4px" }}>
+                                                ✨ AI Recommendation
+                                              </span>
+                                              <span style={{ display: "block", marginTop: "2px" }}>
+                                                {img.suggestedAlt}
+                                              </span>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12.5px" }}>
+                                            <span style={{
+                                              background: "#f0fdf4",
+                                              color: "#16a34a",
+                                              padding: "2px 6px",
+                                              borderRadius: "4px",
+                                              fontSize: "10px",
+                                              fontWeight: "700",
+                                              border: "1px solid #bbf7d0",
+                                              textTransform: "uppercase"
+                                            }}>
+                                              ✓ Active
+                                            </span>
+                                            <span style={{ color: "var(--llm-on-surface)" }}>{img.currentAlt}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ verticalAlign: "middle" }}>
+                                    <div style={{ fontSize: "12px", wordBreak: "break-all" }}>
+                                      <code>{currentFn}</code>
+                                    </div>
+                                    {poorFn && (
+                                      <div style={{
+                                        marginTop: "6px",
+                                        padding: "6px 10px",
+                                        borderRadius: "6px",
+                                        background: "#fffbeb",
+                                        border: "1px solid #fef3c7",
+                                        color: "#b45309",
+                                        fontSize: "11px",
+                                        lineHeight: "1.4"
+                                      }}>
+                                        <span style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "4px" }}>
+                                          ⚠️ Generic Filename
+                                        </span>
+                                        <span style={{ display: "block", marginTop: "2px", color: "#d97706" }}>
+                                          Tip: Rename file to <code style={{ background: "#fff", padding: "1px 4px", borderRadius: "3px", border: "1px solid #fde68a" }}>{img.suggestedFilename}</code> before uploading to boost search indexing.
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Sliding Floating Action Bar when items selected */}
+                {selectedCount > 0 && (
+                  <div style={{
+                    position: "fixed",
+                    bottom: "20px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: "calc(100% - 40px)",
+                    maxWidth: "640px",
+                    background: "rgba(15, 23, 42, 0.95)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: "12px",
+                    padding: "12px 20px",
+                    boxShadow: "0 10px 30px -5px rgba(0, 0, 0, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    zIndex: 9999,
+                    animation: "slide-up-floating 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+                    color: "#ffffff"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div style={{
+                        background: "var(--llm-primary)",
+                        color: "white",
+                        fontSize: "11px",
+                        fontWeight: "800",
+                        padding: "3px 8px",
+                        borderRadius: "6px"
+                      }}>
+                        {selectedCount}
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: "600" }}>
+                        {selectedCount === 1 ? "1 image selected" : `${selectedCount} images selected`}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <button
+                        type="button"
+                        className="llm-btn llm-btn-outline llm-btn-sm"
+                        style={{
+                          background: "transparent",
+                          color: "#e2e8f0",
+                          borderColor: "rgba(255,255,255,0.2)",
+                          fontWeight: "600"
+                        }}
+                        onClick={() => setSelectedImages({})}
+                        disabled={isWorking}
+                      >
+                        Deselect All
+                      </button>
+                      <button
+                        type="button"
+                        className={`llm-btn llm-btn-primary llm-btn-sm ${bulkState === 'syncing' ? "llm-btn-pulse" : ""}`}
+                        style={{
+                          background: "var(--llm-primary)",
+                          color: "white",
+                          boxShadow: "0 4px 12px rgba(0, 62, 199, 0.3)",
+                          fontWeight: "700"
+                        }}
+                        onClick={handleFixSelected}
+                        disabled={isWorking || bulkState !== 'idle'}
+                      >
+                        {bulkState === 'optimizing' ? (
+                          <span>Optimizing ({bulkProgress.current}/{bulkProgress.total})</span>
+                        ) : bulkState === 'syncing' ? (
+                          <span className="llm-syncing-pulse">Syncing...</span>
+                        ) : (
+                          `Optimize Selected (${selectedCount})`
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
