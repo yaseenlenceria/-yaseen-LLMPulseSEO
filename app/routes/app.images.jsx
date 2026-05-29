@@ -194,7 +194,6 @@ export default function ProductImageOptimisation() {
   const [completedIds, setCompletedIds] = useState(new Set());
   const [bulkState, setBulkState] = useState('idle'); // 'idle' | 'optimizing' | 'syncing'
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
-  const [syncingId, setSyncingId] = useState(null);
 
 
   // Inline status banner — replaces rapid right-side toasts
@@ -211,7 +210,6 @@ export default function ProductImageOptimisation() {
   useEffect(() => {
     if (!isWorking) {
       setBulkState('idle');
-      setSyncingId(null);
     }
   }, [isWorking]);
 
@@ -346,63 +344,7 @@ export default function ProductImageOptimisation() {
     fetcher.submit({ intent: "save-settings", altTemplate, filenameTemplate }, { method: "POST" });
   };
 
-  const applySingle = (img) => {
-    // 1. Add to processing set immediately
-    setProcessingIds(prev => {
-      const next = new Set(prev);
-      next.add(img.mediaId);
-      return next;
-    });
 
-    // 2. Wait 600ms (satisfying processing spin)
-    setTimeout(() => {
-      // 3. Move from processing to completed set
-      setProcessingIds(prev => {
-        const next = new Set(prev);
-        next.delete(img.mediaId);
-        return next;
-      });
-      setCompletedIds(prev => {
-        const next = new Set(prev);
-        next.add(img.mediaId);
-        return next;
-      });
-
-      // 4. Update state optimistically
-      setImagesList(prev => prev.map(item => {
-        if (item.mediaId === img.mediaId) {
-          return {
-            ...item,
-            currentAlt: img.suggestedAlt,
-            hasAlt: true,
-            status: "Optimized"
-          };
-        }
-        return item;
-      }));
-
-      // Set the syncing ID for button feedback
-      setSyncingId(img.mediaId);
-
-      // 5. Submit to Shopify
-      fetcher.submit({
-        intent: "fix-single",
-        productId: img.productId,
-        mediaId: img.mediaId,
-        altText: img.suggestedAlt
-      }, { method: "POST" });
-
-      // 6. Fade the completion green flash styling after 1 second
-      setTimeout(() => {
-        setCompletedIds(prev => {
-          const next = new Set(prev);
-          next.delete(img.mediaId);
-          return next;
-        });
-      }, 1000);
-
-    }, 600);
-  };
 
   const applyBulk = (imageList) => {
     const targets = imageList.filter(img => !img.hasAlt || selectedImages[img.mediaId]);
@@ -1157,7 +1099,7 @@ export default function ProductImageOptimisation() {
                       </div>
                     ) : (
                       <div className="llm-table-wrap">
-                        <table className="llm-table">
+                                        <table className="llm-table">
                           <thead>
                             <tr>
                               <th style={{ width: "30px", paddingRight: 0 }}>
@@ -1173,8 +1115,6 @@ export default function ProductImageOptimisation() {
                               <th>Image Alt Text</th>
                               <th>Image Asset Filename</th>
                               <th>AI Recommendation</th>
-                              <th>Status</th>
-                              <th style={{ textAlign: "right" }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1238,27 +1178,6 @@ export default function ProductImageOptimisation() {
                                       <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--llm-primary)" }}>
                                         {img.suggestedAlt}
                                       </span>
-                                    </td>
-                                    <td style={{ verticalAlign: "middle" }}>
-                                      {isProcessing ? (
-                                        <span className="llm-badge llm-badge-processing" style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center", background: "var(--llm-primary)", color: "white" }}>
-                                          AI Writing...
-                                        </span>
-                                      ) : (
-                                        <span className={`llm-badge ${img.hasAlt ? "llm-badge-success" : "llm-badge-warning"}`} style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center" }}>
-                                          {img.status === "Optimized" || img.hasAlt ? "AI Ready" : "Unoptimized"}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td style={{ verticalAlign: "middle", textAlign: "right" }}>
-                                      <button
-                                        className={`llm-btn llm-btn-primary llm-btn-sm ${isProcessing ? "llm-btn-pulse" : (syncingId === img.mediaId ? "llm-btn-pulse" : "")}`}
-                                        onClick={() => applySingle(img)}
-                                        disabled={isWorking || isProcessing || bulkState !== 'idle'}
-                                        style={{ minWidth: "80px" }}
-                                      >
-                                        {isProcessing ? "Writing..." : (syncingId === img.mediaId ? "Syncing..." : "Approve")}
-                                      </button>
                                     </td>
                                   </tr>
                                 );
