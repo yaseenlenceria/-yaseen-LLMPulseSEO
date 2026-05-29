@@ -179,8 +179,9 @@ export default function ProductImageOptimisation() {
     }))
   );
   const [altTemplate, setAltTemplate] = useState(settings.altTemplate);
-  const [filenameTemplate] = useState(settings.filenameTemplate);
+  const [filenameTemplate, setFilenameTemplate] = useState(settings.filenameTemplate);
   const [altError, setAltError] = useState("");
+  const [fileError, setFileError] = useState("");
   const [filterMissing, setFilterMissing] = useState(false);
   const [selectedImages, setSelectedImages] = useState({});
 
@@ -245,6 +246,11 @@ export default function ProductImageOptimisation() {
     const val = validateTemplate(altTemplate);
     setAltError(val.valid ? "" : val.error);
   }, [altTemplate]);
+
+  useEffect(() => {
+    const val = validateTemplate(filenameTemplate);
+    setFileError(val.valid ? "" : val.error);
+  }, [filenameTemplate]);
 
 
 
@@ -344,7 +350,7 @@ export default function ProductImageOptimisation() {
   }, [scanState]);
 
   const saveSettings = () => {
-    if (altError) {
+    if (altError || fileError) {
       shopify.toast.show("Please fix validation errors first.");
       return;
     }
@@ -592,11 +598,11 @@ export default function ProductImageOptimisation() {
             {/* Settings panel — always open */}
             <div className="llm-card" style={{ marginBottom: "24px" }}>
               <div className="llm-card-head">
-                <h2>Image Description Template</h2>
-                <p>Define rules for auto-generating missing product image alt text descriptions.</p>
+                <h2>Image Description &amp; Asset Filename Templates</h2>
+                <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
               </div>
 
-              <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
                 <div>
                   <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
                     Image Description Template
@@ -622,6 +628,38 @@ export default function ProductImageOptimisation() {
                         className="llm-btn llm-btn-outline llm-btn-sm"
                         style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
                         onClick={() => setAltTemplate(preset.value)}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                    Image Asset Filename Template
+                  </label>
+                  <input
+                    id="filename-template-input"
+                    className="llm-input"
+                    value={filenameTemplate}
+                    onChange={(e) => setFilenameTemplate(e.target.value)}
+                    placeholder="#product_name# - #product_vendor#"
+                  />
+                  {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
+                  <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
+                    {[
+                      { label: "Product Name Only", value: "#product_name#" },
+                      { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
+                      { label: "SKU Only", value: "#variant_sku#" },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className="llm-btn llm-btn-outline llm-btn-sm"
+                        style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
+                        onClick={() => setFilenameTemplate(preset.value)}
                       >
                         {preset.label}
                       </button>
@@ -1163,12 +1201,12 @@ export default function ProductImageOptimisation() {
                                       )}
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
-                                      <div style={{ fontSize: "12px" }}>
-                                        <code>{truncateFilename(currentFn, 24)}</code>
+                                      <div style={{ fontSize: "12px", wordBreak: "break-all" }}>
+                                        <code>{currentFn}</code>
                                       </div>
                                       {poorFn && (
-                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
-                                          ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
+                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600", wordBreak: "break-all" }}>
+                                          ⚠️ Generic Filename (Tip: rename to <code>{img.suggestedFilename}</code> before uploading)
                                         </div>
                                       )}
                                     </td>
