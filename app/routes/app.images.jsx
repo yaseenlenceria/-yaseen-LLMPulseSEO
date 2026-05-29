@@ -172,7 +172,12 @@ export default function ProductImageOptimisation() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
 
-  const [imagesList, setImagesList] = useState(initialImages);
+  const [imagesList, setImagesList] = useState(() =>
+    initialImages.map(img => ({
+      ...img,
+      originalAlt: img.currentAlt || ""
+    }))
+  );
   const [altTemplate, setAltTemplate] = useState(settings.altTemplate);
   const [filenameTemplate] = useState(settings.filenameTemplate);
   const [altError, setAltError] = useState("");
@@ -215,13 +220,19 @@ export default function ProductImageOptimisation() {
   // Sync images list from loader when loader data changes, but not while a mutation is in progress
   useEffect(() => {
     if (isWorking) return;
-    setImagesList(initialImages);
+    setImagesList(initialImages.map(img => ({
+      ...img,
+      originalAlt: img.currentAlt || ""
+    })));
   }, [initialImages, isWorking]);
 
   // When fetcher returns scan data, update images list and complete the scan
   useEffect(() => {
     if (fetcher.data?.images && fetcher.data?.ok) {
-      setImagesList(fetcher.data.images);
+      setImagesList(fetcher.data.images.map(img => ({
+        ...img,
+        originalAlt: img.currentAlt || ""
+      })));
       setScanState('completed');
       setProgress(100);
       setShowTable(true);
@@ -488,9 +499,12 @@ export default function ProductImageOptimisation() {
   };
 
   const currentResults = getDisplayResults();
+  const selectedCount = Object.keys(selectedImages).filter(k => selectedImages[k]).length;
 
   const handleFixAll = () => {
-    const listToFix = currentResults.list.filter(img => !img.hasAlt);
+    const listToFix = selectedCount > 0 
+      ? currentResults.list.filter(img => selectedImages[img.mediaId])
+      : currentResults.list.filter(img => !img.hasAlt);
     applyBulk(listToFix);
   };
 
@@ -971,7 +985,7 @@ export default function ProductImageOptimisation() {
                       <button
                         className={`llm-btn llm-btn-primary ${bulkState === 'syncing' ? "llm-btn-pulse" : ""}`}
                         onClick={handleFixAll}
-                        disabled={isWorking || bulkState !== 'idle' || currentResults.missingAlt === 0}
+                        disabled={isWorking || bulkState !== 'idle' || (currentResults.missingAlt === 0 && selectedCount === 0)}
                       >
                         {bulkState === 'optimizing' ? (
                           <span>Optimizing... ({bulkProgress.current}/{bulkProgress.total})</span>
@@ -979,6 +993,8 @@ export default function ProductImageOptimisation() {
                           <span className="llm-syncing-pulse">Syncing to Shopify...</span>
                         ) : isWorking ? (
                           "Syncing..."
+                        ) : selectedCount > 0 ? (
+                          `Bulk Optimize Alt Text (${selectedCount})`
                         ) : (
                           "Bulk Optimize Alt Text"
                         )}
@@ -1120,16 +1136,30 @@ export default function ProductImageOptimisation() {
                                       <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
-                                      <div
-                                        className={isCompleted ? "llm-text-slide-in" : ""}
-                                        style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}
-                                      >
-                                        {img.currentAlt || "Missing Label"}
-                                      </div>
-                                      {!img.hasAlt && (
-                                        <div style={{ fontSize: "11px", color: "var(--llm-primary)", marginTop: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
-                                          <span style={{ fontSize: "12px" }}>💡</span> Suggested: <span style={{ color: "#7c3aed" }}>{img.suggestedAlt}</span>
+                                      {img.status === "Optimized" ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                          <div style={{ fontSize: "11px", color: "var(--llm-outline)", textDecoration: "line-through" }}>
+                                            Was: {img.originalAlt || "Missing Label"}
+                                          </div>
+                                          <div className="llm-text-slide-in" style={{ fontSize: "12px", fontWeight: "700", color: "#16a34a", display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span>Now:</span> {img.currentAlt}
+                                            <span style={{ fontSize: "10px", background: "#f0fdf4", color: "#16a34a", padding: "1px 6px", borderRadius: "10px", fontWeight: "700" }}>Optimized</span>
+                                          </div>
                                         </div>
+                                      ) : (
+                                        <>
+                                          <div
+                                            className={isCompleted ? "llm-text-slide-in" : ""}
+                                            style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}
+                                          >
+                                            {img.currentAlt || "Missing Label"}
+                                          </div>
+                                          {!img.hasAlt && (
+                                            <div style={{ fontSize: "11px", color: "var(--llm-primary)", marginTop: "4px", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                                              <span style={{ fontSize: "12px" }}>💡</span> Suggested: <span style={{ color: "#7c3aed" }}>{img.suggestedAlt}</span>
+                                            </div>
+                                          )}
+                                        </>
                                       )}
                                     </td>
                                     <td style={{ verticalAlign: "middle" }}>
