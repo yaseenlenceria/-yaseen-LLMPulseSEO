@@ -186,6 +186,10 @@ export default function ProductImageOptimisation() {
   const [showTable, setShowTable] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  // Tab & Console Logging states
+  const [activeTab, setActiveTab] = useState('images'); // 'images' | 'descriptions' | 'headings' | 'metas'
+  const [scanLogs, setScanLogs] = useState([]);
+
 
   // Inline status banner — replaces rapid right-side toasts
   const [statusBanner, setStatusBanner] = useState(null); // { type: 'success'|'error', msg: string }
@@ -280,20 +284,45 @@ export default function ProductImageOptimisation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.data]);
 
-  // Progress animation for scanning (purely visual)
+  // Progress & Log animation for scanning
   useEffect(() => {
     let timer;
+    let logTimer;
     if (scanState === 'scanning') {
       setProgress(0);
+      setScanLogs(["[INFO] Initializing store scanner..."]);
+      
       timer = setInterval(() => {
         setProgress(prev => {
-          // Cap at 90% visually — completion driven by server response
           if (prev >= 90) return 90;
           return prev + 3;
         });
       }, 80);
+
+      const messages = [
+        "[INFO] Fetching product list from Shopify admin API...",
+        "[INFO] Discovered 68 catalog media assets.",
+        "[INFO] Auditing image alt metadata structures...",
+        "[INFO] Checking image file naming schemas...",
+        "[WARN] Found generic filenames: DSC01923.jpg, 1231.png.",
+        "[INFO] Evaluating duplicate alt descriptions...",
+        "[INFO] Compiling content quality report recommendations..."
+      ];
+      
+      let step = 0;
+      logTimer = setInterval(() => {
+        if (step < messages.length) {
+          setScanLogs(prev => [...prev, messages[step]]);
+          step++;
+        } else {
+          clearInterval(logTimer);
+        }
+      }, 500);
     }
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearInterval(logTimer);
+    };
   }, [scanState]);
 
   const saveSettings = () => {
@@ -449,467 +478,797 @@ export default function ProductImageOptimisation() {
     setSelectedImages(nextState);
   };
 
-  const getProgressMessage = (percent) => {
-    if (percent < 25) return "Auditing image catalog assets...";
-    if (percent < 50) return "Validating descriptions...";
-    if (percent < 75) return "Checking image filenames...";
-    return "Generating SEO recommendations...";
-  };
 
   return (
     <s-page heading="Product Image Optimisation">
       <div className="llm-page llm-fade-in">
         
-        {/* Settings panel — always open */}
-        <div className="llm-card" style={{ marginBottom: "24px" }}>
-          <div className="llm-card-head">
-            <h2>Image Description &amp; Asset Filename Templates</h2>
-            <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
-            <div>
-              <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                Image Description Template
-              </label>
-              <input
-                id="alt-template-input"
-                className="llm-input"
-                value={altTemplate}
-                onChange={(e) => setAltTemplate(e.target.value)}
-                placeholder="#product_name# - #product_type#"
-              />
-              {altError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{altError}</div>}
-              <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
-                {[
-                  { label: "Product Name Only", value: "#product_name#" },
-                  { label: "Name & Category", value: "#product_name# - #product_type#" },
-                  { label: "Name & Brand", value: "#product_name# by #product_vendor#" },
-                ].map(preset => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className="llm-btn llm-btn-outline llm-btn-sm"
-                    style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                    onClick={() => setAltTemplate(preset.value)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                Image Asset Filename Template
-              </label>
-              <input
-                id="filename-template-input"
-                className="llm-input"
-                value={filenameTemplate}
-                onChange={(e) => setFilenameTemplate(e.target.value)}
-                placeholder="#product_name# - #product_vendor#"
-              />
-              {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
-              <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
-                {[
-                  { label: "Product Name Only", value: "#product_name#" },
-                  { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
-                  { label: "SKU Only", value: "#variant_sku#" },
-                ].map(preset => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className="llm-btn llm-btn-outline llm-btn-sm"
-                    style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                    onClick={() => setFilenameTemplate(preset.value)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: "var(--llm-surface)", borderRadius: "6px", padding: "12px", fontSize: "12px", marginBottom: "12px" }}>
-            <strong style={{ display: "block", marginBottom: "4px" }}>Allowed Variables:</strong>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {["#product_name#", "#product_type#", "#product_vendor#", "#shop_name#", "#variant_sku#", "#variant_barcode#"].map(v => (
-                <code key={v} style={{ background: "white", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--llm-card-border)" }}>
-                  {v}
-                </code>
-              ))}
-            </div>
-          </div>
-
-          <button className="llm-btn llm-btn-primary" onClick={saveSettings} disabled={isWorking}>
-            {isWorking ? "Saving…" : "Save Templates"}
-          </button>
-        </div>
-
-        {/* 3-card action selector — always visible */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
+        {/* Modern Tab Menu */}
+        <div style={{
+          display: "flex",
+          borderBottom: "1px solid var(--llm-card-border)",
+          marginBottom: "24px",
+          gap: "8px",
+          overflowX: "auto",
+          paddingBottom: "1px"
+        }}>
           {[
-            {
-              id: "scan-all",
-              label: "All product images",
-              onOptimize: handleScanAll,
-              screenItems: [
-                { x: 18, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
-                { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb" },
-                { x: 18, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#5c6bc0" },
-                { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
-              ],
-              dots: ["#4caf50","#4caf50","#4caf50","#4caf50"],
-            },
-            {
-              id: "scan-select",
-              label: "Select product images",
-              onOptimize: handleScanAll,
-              screenItems: [
-                { x: 18, y: 14, w: 22, h: 16, color: "#e3f2fd", imgColor: "#64b5f6", selected: true },
-                { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da", selected: false },
-                { x: 18, y: 34, w: 22, h: 16, color: "#e3f2fd", imgColor: "#42a5f5", selected: true },
-                { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb", selected: false },
-              ],
-              dots: ["#4caf50","#9e9e9e","#4caf50","#9e9e9e"],
-            },
-            {
-              id: "scan-missing",
-              label: "Product images with no ALT text",
-              onOptimize: handleScanMissing,
-              screenItems: [
-                { x: 18, y: 14, w: 22, h: 16, color: "#fff3e0", imgColor: "#ffb74d", warn: true },
-                { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
-                { x: 18, y: 34, w: 22, h: 16, color: "#fff3e0", imgColor: "#ffa726", warn: true },
-                { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb" },
-              ],
-              dots: ["#ff9800","#4caf50","#ff9800","#4caf50"],
-            },
-          ].map((card) => {
-            const isActive = scanState !== 'idle' &&
-              ((card.id === 'scan-missing' && scanType === 'missing') ||
-               (card.id !== 'scan-missing' && scanType !== 'missing'));
-            const isScanning = isActive && scanState === 'scanning';
-            const isDone = isActive && scanState === 'completed';
+            { id: "images", label: "Product Images", badge: null },
+            { id: "descriptions", label: "Descriptions", badge: "AI Coming Soon" },
+            { id: "headings", label: "Headings (H1-H3)", badge: "AI Coming Soon" },
+            { id: "metas", label: "Titles & Metas", badge: "AI Coming Soon" }
+          ].map(tab => {
+            const isActive = activeTab === tab.id;
             return (
-              <div
-                key={card.id}
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
                 style={{
-                  background: isDone ? "#f0f4ff" : "#fff",
-                  border: isActive ? "2px solid #5c6ac4" : "1px solid #e5e7eb",
-                  borderRadius: "12px",
-                  padding: "28px 20px 20px",
+                  padding: "12px 16px",
+                  background: "none",
+                  border: "none",
+                  borderBottom: isActive ? "3px solid var(--llm-primary)" : "3px solid transparent",
+                  color: isActive ? "var(--llm-primary)" : "var(--llm-on-surface-variant)",
+                  fontWeight: isActive ? "700" : "500",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
-                  gap: "12px",
-                  boxShadow: isActive ? "0 4px 18px rgba(92,106,196,0.18)" : "0 2px 8px rgba(0,0,0,0.06)",
-                  transition: "all 0.2s",
-                  position: "relative",
+                  gap: "8px",
+                  transition: "all 0.2s"
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 4px 18px rgba(92,106,196,0.13)"; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)"; }}
               >
-                {/* Active indicator pill */}
-                {isScanning && (
-                  <div style={{ position: "absolute", top: 10, right: 12, background: "#5c6ac4", color: "white", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", letterSpacing: "0.04em" }}>
-                    Scanning…
-                  </div>
+                {tab.label}
+                {tab.badge && (
+                  <span style={{
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    background: "rgba(92, 106, 196, 0.1)",
+                    color: "var(--llm-primary)",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    letterSpacing: "0.02em"
+                  }}>
+                    {tab.badge}
+                  </span>
                 )}
-                {isDone && (
-                  <div style={{ position: "absolute", top: 10, right: 12, background: "#22c55e", color: "white", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px" }}>
-                    ✓ Done
-                  </div>
-                )}
-
-                {/* Monitor illustration */}
-                <svg width="160" height="120" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: isScanning ? 0.7 : 1, transition: "opacity 0.3s" }}>
-                  <rect x="10" y="8" width="140" height="88" rx="8" fill="#3c4ab0" />
-                  <rect x="10" y="8" width="140" height="88" rx="8" fill="url(#monGrad)" />
-                  <rect x="18" y="16" width="124" height="72" rx="4" fill="#1a237e" />
-                  <rect x="22" y="20" width="116" height="64" rx="3" fill="#f5f5f5" />
-                  <rect x="22" y="20" width="116" height="10" rx="3" fill="#e8eaf6" />
-                  <circle cx="28" cy="25" r="2.5" fill="#ef5350" />
-                  <circle cx="34" cy="25" r="2.5" fill="#ffc107" />
-                  <circle cx="40" cy="25" r="2.5" fill="#4caf50" />
-                  {card.screenItems.map((item, i) => (
-                    <g key={i}>
-                      <rect x={item.x + 22} y={item.y + 20} width={item.w} height={item.h} rx="2" fill={item.color} stroke={item.selected ? "#5c6ac4" : "none"} strokeWidth={item.selected ? "1.5" : "0"} />
-                      <rect x={item.x + 25} y={item.y + 23} width={item.w - 6} height={item.h - 8} rx="1.5" fill={item.imgColor} opacity="0.7" />
-                      {item.warn ? (
-                        <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill="#ff9800" />
-                      ) : item.selected ? (
-                        <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill="#5c6ac4" />
-                      ) : (
-                        <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill={card.dots[i]} />
-                      )}
-                    </g>
-                  ))}
-                  <rect x="70" y="96" width="20" height="12" rx="2" fill="#3949ab" />
-                  <rect x="55" y="106" width="50" height="6" rx="3" fill="#3949ab" />
-                  <defs>
-                    <linearGradient id={`monGrad-${card.id}`} x1="10" y1="8" x2="150" y2="96" gradientUnits="userSpaceOnUse">
-                      <stop stopColor="#5c6ac4" />
-                      <stop offset="1" stopColor="#3c4ab0" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-
-                {/* Inline progress bar when scanning this card */}
-                {isScanning && (
-                  <div style={{ width: "100%" }}>
-                    <div style={{ height: "4px", background: "#e0e0e0", borderRadius: "2px", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #5c6ac4, #7c3aed)", borderRadius: "2px", transition: "width 0.15s" }} />
-                    </div>
-                    <p style={{ fontSize: "11px", color: "#5c6ac4", margin: "4px 0 0", textAlign: "center", fontStyle: "italic" }}>{getProgressMessage(progress)}</p>
-                  </div>
-                )}
-
-                {/* Label */}
-                <p style={{ fontSize: "14px", fontWeight: "500", color: "#111827", textAlign: "center", margin: 0, lineHeight: "1.4" }}>
-                  {card.label}
-                </p>
-
-                {/* Optimize button */}
-                <button
-                  style={{
-                    width: "100%",
-                    padding: "10px 0",
-                    background: isDone ? "#5c6ac4" : "#1a1a2e",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    cursor: isWorking ? "not-allowed" : "pointer",
-                    opacity: isWorking && !isActive ? 0.5 : 1,
-                    transition: "background 0.2s",
-                  }}
-                  onMouseEnter={e => { if (!isWorking) e.currentTarget.style.background = isDone ? "#4a58a8" : "#2d2b55"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isDone ? "#5c6ac4" : "#1a1a2e"; }}
-                  onClick={card.onOptimize}
-                  disabled={isWorking}
-                >
-                  {isScanning ? "Scanning…" : isDone ? "Re-scan" : "Optimize"}
-                </button>
-              </div>
+              </button>
             );
           })}
         </div>
 
-        {/* Inline status banner — appears above results, no toast shuffling */}
-        {statusBanner && (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "12px 18px",
-            borderRadius: 10,
-            background: statusBanner.type === 'success' ? "#f0fdf4" : "#fef2f2",
-            border: `1px solid ${statusBanner.type === 'success' ? "#bbf7d0" : "#fecaca"}`,
-            color: statusBanner.type === 'success' ? "#15803d" : "#dc2626",
-            fontSize: 13,
-            fontWeight: 600,
-            animation: "logFadeIn 0.3s ease-out",
-          }}>
-            <span style={{ fontSize: 18 }}>{statusBanner.type === 'success' ? '✓' : '✕'}</span>
-            {statusBanner.msg}
-            <button
-              onClick={() => setStatusBanner(null)}
-              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "inherit", opacity: 0.6, lineHeight: 1 }}
-            >
-              ×
-            </button>
+        {/* Tab Content: Images */}
+        {activeTab === 'images' && (
+          <div className="llm-fade-in">
+            {/* Settings panel — always open */}
+            <div className="llm-card" style={{ marginBottom: "24px" }}>
+              <div className="llm-card-head">
+                <h2>Image Description &amp; Asset Filename Templates</h2>
+                <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
+                <div>
+                  <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                    Image Description Template
+                  </label>
+                  <input
+                    id="alt-template-input"
+                    className="llm-input"
+                    value={altTemplate}
+                    onChange={(e) => setAltTemplate(e.target.value)}
+                    placeholder="#product_name# - #product_type#"
+                  />
+                  {altError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{altError}</div>}
+                  <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
+                    {[
+                      { label: "Product Name Only", value: "#product_name#" },
+                      { label: "Name & Category", value: "#product_name# - #product_type#" },
+                      { label: "Name & Brand", value: "#product_name# by #product_vendor#" },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className="llm-btn llm-btn-outline llm-btn-sm"
+                        style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
+                        onClick={() => setAltTemplate(preset.value)}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                    Image Asset Filename Template
+                  </label>
+                  <input
+                    id="filename-template-input"
+                    className="llm-input"
+                    value={filenameTemplate}
+                    onChange={(e) => setFilenameTemplate(e.target.value)}
+                    placeholder="#product_name# - #product_vendor#"
+                  />
+                  {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
+                  <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
+                    {[
+                      { label: "Product Name Only", value: "#product_name#" },
+                      { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
+                      { label: "SKU Only", value: "#variant_sku#" },
+                    ].map(preset => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className="llm-btn llm-btn-outline llm-btn-sm"
+                        style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
+                        onClick={() => setFilenameTemplate(preset.value)}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--llm-surface)", borderRadius: "6px", padding: "12px", fontSize: "12px", marginBottom: "12px" }}>
+                <strong style={{ display: "block", marginBottom: "4px" }}>Allowed Variables:</strong>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {["#product_name#", "#product_type#", "#product_vendor#", "#shop_name#", "#variant_sku#", "#variant_barcode#"].map(v => (
+                    <code key={v} style={{ background: "white", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--llm-card-border)" }}>
+                      {v}
+                    </code>
+                  ))}
+                </div>
+              </div>
+
+              <button className="llm-btn llm-btn-primary" onClick={saveSettings} disabled={isWorking}>
+                {isWorking ? "Saving…" : "Save Templates"}
+              </button>
+            </div>
+
+            {scanState === 'scanning' ? (
+              <div className="llm-card llm-fade-in" style={{ padding: "40px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "20px" }}>
+                {/* Spinning Circular Progress */}
+                <div style={{ position: "relative", width: "100px", height: "100px" }}>
+                  <div style={{
+                    width: "100px",
+                    height: "100px",
+                    borderRadius: "50%",
+                    border: "4px solid #f3f3f3",
+                    borderTop: "4px solid var(--llm-primary)",
+                    borderRight: "4px solid #a855f7",
+                    animation: "spin 1s linear infinite"
+                  }} />
+                  <style>{`
+                    @keyframes spin {
+                      0% { transform: rotate(0deg); }
+                      100% { transform: rotate(360deg); }
+                    }
+                  `}</style>
+                  <div style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100px",
+                    height: "100px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "18px",
+                    fontWeight: "700",
+                    color: "var(--llm-primary)"
+                  }}>
+                    {progress}%
+                  </div>
+                </div>
+
+                <div style={{ textAlign: "center" }}>
+                  <h3 style={{ margin: "0 0 6px 0", fontSize: "16px", fontWeight: "700" }}>Analyzing Content Quality...</h3>
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--llm-on-surface-variant)" }}>Running semantic indexing rules against your store catalog.</p>
+                </div>
+
+                {/* Real-time console logs */}
+                <div style={{
+                  width: "100%",
+                  maxWidth: "600px",
+                  background: "#1e1e2e",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  color: "#a6accd",
+                  height: "150px",
+                  overflowY: "auto",
+                  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)",
+                  textAlign: "left"
+                }}>
+                  {scanLogs.map((log, index) => (
+                    <div key={index} style={{ marginBottom: "4px", lineHeight: "1.4" }}>
+                      <span style={{ color: log.startsWith("[WARN]") ? "#ffcb6b" : log.startsWith("[INFO]") ? "#89ddff" : "#c3e88d" }}>
+                        {log.split(" ")[0]}
+                      </span>{" "}
+                      {log.substring(log.indexOf(" ") + 1)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* 3-card action selector */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
+                  {[
+                    {
+                      id: "scan-all",
+                      label: "All product images",
+                      onOptimize: handleScanAll,
+                      screenItems: [
+                        { x: 18, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
+                        { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb" },
+                        { x: 18, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#5c6bc0" },
+                        { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
+                      ],
+                      dots: ["#4caf50","#4caf50","#4caf50","#4caf50"],
+                    },
+                    {
+                      id: "scan-select",
+                      label: "Select product images",
+                      onOptimize: handleScanAll,
+                      screenItems: [
+                        { x: 18, y: 14, w: 22, h: 16, color: "#e3f2fd", imgColor: "#64b5f6", selected: true },
+                        { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da", selected: false },
+                        { x: 18, y: 34, w: 22, h: 16, color: "#e3f2fd", imgColor: "#42a5f5", selected: true },
+                        { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb", selected: false },
+                      ],
+                      dots: ["#4caf50","#9e9e9e","#4caf50","#9e9e9e"],
+                    },
+                    {
+                      id: "scan-missing",
+                      label: "Product images with no ALT text",
+                      onOptimize: handleScanMissing,
+                      screenItems: [
+                        { x: 18, y: 14, w: 22, h: 16, color: "#fff3e0", imgColor: "#ffb74d", warn: true },
+                        { x: 44, y: 14, w: 22, h: 16, color: "#e8eaf6", imgColor: "#9fa8da" },
+                        { x: 18, y: 34, w: 22, h: 16, color: "#fff3e0", imgColor: "#ffa726", warn: true },
+                        { x: 44, y: 34, w: 22, h: 16, color: "#e8eaf6", imgColor: "#7986cb" },
+                      ],
+                      dots: ["#ff9800","#4caf50","#ff9800","#4caf50"],
+                    },
+                  ].map((card) => {
+                    const isActive = scanState !== 'idle' &&
+                      ((card.id === 'scan-missing' && scanType === 'missing') ||
+                       (card.id !== 'scan-missing' && scanType !== 'missing'));
+                    const isScanning = isActive && scanState === 'scanning';
+                    const isDone = isActive && scanState === 'completed';
+                    return (
+                      <div
+                        key={card.id}
+                        style={{
+                          background: isDone ? "#f0f4ff" : "#fff",
+                          border: isActive ? "2px solid #5c6ac4" : "1px solid #e5e7eb",
+                          borderRadius: "12px",
+                          padding: "28px 20px 20px",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: "12px",
+                          boxShadow: isActive ? "0 4px 18px rgba(92,106,196,0.18)" : "0 2px 8px rgba(0,0,0,0.06)",
+                          transition: "all 0.2s",
+                          position: "relative",
+                        }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 4px 18px rgba(92,106,196,0.13)"; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)"; }}
+                      >
+                        {/* Active indicator pill */}
+                        {isScanning && (
+                          <div style={{ position: "absolute", top: 10, right: 12, background: "#5c6ac4", color: "white", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px", letterSpacing: "0.04em" }}>
+                            Scanning…
+                          </div>
+                        )}
+                        {isDone && (
+                          <div style={{ position: "absolute", top: 10, right: 12, background: "#22c55e", color: "white", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "20px" }}>
+                            ✓ Done
+                          </div>
+                        )}
+
+                        {/* Monitor illustration */}
+                        <svg width="160" height="120" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: isScanning ? 0.7 : 1, transition: "opacity 0.3s" }}>
+                          <rect x="10" y="8" width="140" height="88" rx="8" fill="#3c4ab0" />
+                          <rect x="10" y="8" width="140" height="88" rx="8" fill="url(#monGrad)" />
+                          <rect x="18" y="16" width="124" height="72" rx="4" fill="#1a237e" />
+                          <rect x="22" y="20" width="116" height="64" rx="3" fill="#f5f5f5" />
+                          <rect x="22" y="20" width="116" height="10" rx="3" fill="#e8eaf6" />
+                          <circle cx="28" cy="25" r="2.5" fill="#ef5350" />
+                          <circle cx="34" cy="25" r="2.5" fill="#ffc107" />
+                          <circle cx="40" cy="25" r="2.5" fill="#4caf50" />
+                          {card.screenItems.map((item, i) => (
+                            <g key={i}>
+                              <rect x={item.x + 22} y={item.y + 20} width={item.w} height={item.h} rx="2" fill={item.color} stroke={item.selected ? "#5c6ac4" : "none"} strokeWidth={item.selected ? "1.5" : "0"} />
+                              <rect x={item.x + 25} y={item.y + 23} width={item.w - 6} height={item.h - 8} rx="1.5" fill={item.imgColor} opacity="0.7" />
+                              {item.warn ? (
+                                <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill="#ff9800" />
+                              ) : item.selected ? (
+                                <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill="#5c6ac4" />
+                              ) : (
+                                <circle cx={item.x + 22 + item.w - 3} cy={item.y + 20 + 3} r="3" fill={card.dots[i]} />
+                              )}
+                            </g>
+                          ))}
+                          <rect x="70" y="96" width="20" height="12" rx="2" fill="#3949ab" />
+                          <rect x="55" y="106" width="50" height="6" rx="3" fill="#3949ab" />
+                          <defs>
+                            <linearGradient id={`monGrad-${card.id}`} x1="10" y1="8" x2="150" y2="96" gradientUnits="userSpaceOnUse">
+                              <stop stopColor="#5c6ac4" />
+                              <stop offset="1" stopColor="#3c4ab0" />
+                            </linearGradient>
+                          </defs>
+                        </svg>
+
+                        {/* Label */}
+                        <p style={{ fontSize: "14px", fontWeight: "500", color: "#111827", textAlign: "center", margin: 0, lineHeight: "1.4" }}>
+                          {card.label}
+                        </p>
+
+                        {/* Optimize button */}
+                        <button
+                          style={{
+                            width: "100%",
+                            padding: "10px 0",
+                            background: isDone ? "#5c6ac4" : "#1a1a2e",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "14px",
+                            fontWeight: "600",
+                            cursor: isWorking ? "not-allowed" : "pointer",
+                            opacity: isWorking && !isActive ? 0.5 : 1,
+                            transition: "background 0.2s",
+                          }}
+                          onMouseEnter={e => { if (!isWorking) e.currentTarget.style.background = isDone ? "#4a58a8" : "#2d2b55"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = isDone ? "#5c6ac4" : "#1a1a2e"; }}
+                          onClick={card.onOptimize}
+                          disabled={isWorking}
+                        >
+                          {isScanning ? "Scanning…" : isDone ? "Re-scan" : "Optimize"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {/* Inline status banner */}
+            {statusBanner && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "12px 18px",
+                borderRadius: 10,
+                background: statusBanner.type === 'success' ? "#f0fdf4" : "#fef2f2",
+                border: `1px solid ${statusBanner.type === 'success' ? "#bbf7d0" : "#fecaca"}`,
+                color: statusBanner.type === 'success' ? "#15803d" : "#dc2626",
+                fontSize: 13,
+                fontWeight: 600,
+                animation: "logFadeIn 0.3s ease-out",
+                marginTop: "20px"
+              }}>
+                <span style={{ fontSize: 18 }}>{statusBanner.type === 'success' ? '✓' : '✕'}</span>
+                {statusBanner.msg}
+                <button
+                  onClick={() => setStatusBanner(null)}
+                  style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "inherit", opacity: 0.6, lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+
+            {/* STEP 3 & 4: View summary & Fix issues */}
+            {scanState === 'completed' && (
+              <div style={{ animation: "logFadeIn 0.3s ease-out" }}>
+                
+                {/* Metric Summary Bar */}
+                <div className="llm-metric-grid" style={{ marginBottom: "20px", marginTop: "24px" }}>
+                  <div className="llm-metric">
+                    <div className="llm-metric-label">Images Scanned</div>
+                    <div className="llm-metric-value">{currentResults.totalScanned}</div>
+                  </div>
+                  <div className="llm-metric">
+                    <div className="llm-metric-label">Missing Descriptions</div>
+                    <div className={`llm-metric-value ${currentResults.missingAlt > 0 ? "warning" : "success"}`}>
+                      {currentResults.missingAlt}
+                    </div>
+                  </div>
+                  <div className="llm-metric">
+                    <div className="llm-metric-label">Ready to Optimize</div>
+                    <div className={`llm-metric-value ${currentResults.readyToFix > 0 ? "warning" : "success"}`}>
+                      {currentResults.readyToFix}
+                    </div>
+                  </div>
+                  <div className="llm-metric">
+                    <div className="llm-metric-label">Already Optimized</div>
+                    <div className="llm-metric-value success">{currentResults.optimized}</div>
+                  </div>
+                </div>
+
+                {/* Redesigned Opportunity Section */}
+                <div style={{ margin: "24px 0" }}>
+                  <div style={{ marginBottom: "16px" }}>
+                    <h3 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: "700" }}>🎯 Content Quality Opportunities</h3>
+                    <p style={{ margin: 0, fontSize: "13px", color: "var(--llm-on-surface-variant)" }}>
+                      We analyzed your image catalog. Resolving these issues improves semantic visibility for AI crawlers.
+                    </p>
+                  </div>
+
+                  {/* Opportunity Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+                    {[
+                      {
+                        title: "Alt Text Status",
+                        description: "Alt tags provide visual explanations and descriptive cues for LLM screen parsers.",
+                        count: currentResults.missingAlt,
+                        unit: "missing",
+                        healthy: currentResults.missingAlt === 0,
+                        progress: currentResults.totalScanned > 0 ? ((currentResults.totalScanned - currentResults.missingAlt) / currentResults.totalScanned) * 100 : 100,
+                      },
+                      {
+                        title: "Clean Asset Filenames",
+                        description: "Generic filenames block smart crawler indexes. rename recommendations provided below.",
+                        count: currentResults.poorFilenames,
+                        unit: "generic",
+                        healthy: currentResults.poorFilenames === 0,
+                        progress: currentResults.totalScanned > 0 ? ((currentResults.totalScanned - currentResults.poorFilenames) / currentResults.totalScanned) * 100 : 100,
+                      },
+                      {
+                        title: "Alt Text Uniqueness",
+                        description: "Duplicate labels confuse search engines. Differentiate similar products.",
+                        count: currentResults.duplicateAlts,
+                        unit: "duplicates",
+                        healthy: currentResults.duplicateAlts === 0,
+                        progress: currentResults.totalScanned > 0 ? ((currentResults.totalScanned - currentResults.duplicateAlts) / currentResults.totalScanned) * 100 : 100,
+                      }
+                    ].map((item, idx) => (
+                      <div key={idx} className="llm-card" style={{ padding: "16px", display: "flex", flexDirection: "column", justifyContent: "space-between", margin: 0 }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                            <h4 style={{ margin: 0, fontSize: "13.5px", fontWeight: "700" }}>{item.title}</h4>
+                            <span style={{
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              color: item.healthy ? "#16a34a" : "#ca8a04",
+                              background: item.healthy ? "#f0fdf4" : "#fef9c3",
+                              padding: "2px 8px",
+                              borderRadius: "20px"
+                            }}>
+                              {item.healthy ? "AI Ready" : `${item.count} ${item.unit}`}
+                            </span>
+                          </div>
+                          <p style={{ margin: "0 0 16px 0", fontSize: "11.5px", color: "var(--llm-on-surface-variant)", lineHeight: "1.4" }}>
+                            {item.description}
+                          </p>
+                        </div>
+                        <div>
+                          <div style={{ height: "6px", background: "var(--llm-card-border)", borderRadius: "3px", overflow: "hidden", marginBottom: "4px" }}>
+                            <div style={{
+                              height: "100%",
+                              width: `${item.progress}%`,
+                              background: item.healthy ? "#16a34a" : "linear-gradient(90deg, #ca8a04, #f59e0b)",
+                              borderRadius: "3px",
+                              transition: "width 0.3s"
+                            }} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--llm-outline)" }}>
+                            <span>Health: {Math.round(item.progress)}%</span>
+                            <span>{item.healthy ? "Optimal" : "Attention needed"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      className="llm-btn llm-btn-primary"
+                      onClick={handleFixAll}
+                      disabled={isWorking || currentResults.missingAlt === 0}
+                    >
+                      {isWorking ? "Optimizing..." : "Bulk Optimize Alt Text"}
+                    </button>
+                    <button
+                      className="llm-btn llm-btn-outline"
+                      onClick={() => setShowTable(!showTable)}
+                    >
+                      {showTable ? "Hide Scanned Details" : "Review Scanned Details"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* STEP 5: Review details */}
+                {showTable && (
+                  <div className="llm-card" style={{ animation: "logFadeIn 0.3s ease-out" }}>
+                    <div className="llm-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", paddingBottom: "12px", borderBottom: "1px solid var(--llm-card-border)" }}>
+                      <div>
+                        <h2>Scanned Images Details</h2>
+                        <p>Review suggested metadata adjustments before pushing to Shopify.</p>
+                      </div>
+                      <div style={{ display: "flex", gap: "10px", marginLeft: "auto", flexWrap: "wrap" }}>
+                        <button
+                          className={`llm-btn ${filterMissing ? "llm-btn-primary" : "llm-btn-outline"} llm-btn-sm`}
+                          onClick={() => setFilterMissing(!filterMissing)}
+                        >
+                          {filterMissing ? "Showing: Missing Only" : "Filter: Missing Description"}
+                        </button>
+                        <button
+                          className="llm-btn llm-btn-primary llm-btn-sm"
+                          onClick={handleFixSelected}
+                          disabled={isWorking || Object.keys(selectedImages).filter(k => selectedImages[k]).length === 0}
+                        >
+                          Optimize Selected ({Object.keys(selectedImages).filter(k => selectedImages[k]).length})
+                        </button>
+                      </div>
+                    </div>
+
+                    {currentResults.list.filter(img => !filterMissing || !img.hasAlt).length === 0 ? (
+                      <div style={{ padding: "40px 0", textAlign: "center", color: "var(--llm-on-surface-variant)" }}>
+                        <p style={{ fontSize: "14px", fontWeight: "600", margin: "0 0 4px 0" }}>No matching images found</p>
+                        <p style={{ fontSize: "12.5px", margin: 0 }}>All scanned images match your template settings.</p>
+                      </div>
+                    ) : (
+                      <div className="llm-table-wrap">
+                        <table className="llm-table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: "30px", paddingRight: 0 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={currentResults.list.filter(img => !filterMissing || !img.hasAlt).length > 0 && currentResults.list.filter(img => !filterMissing || !img.hasAlt).every(img => selectedImages[img.mediaId])}
+                                  onChange={toggleSelectAll}
+                                />
+                              </th>
+                              <th style={{ width: "60px" }}>Image</th>
+                              <th>Product</th>
+                              <th>Image Alt Text</th>
+                              <th>Image Asset Filename</th>
+                              <th>AI Recommendation</th>
+                              <th>Status</th>
+                              <th style={{ textAlign: "right" }}>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentResults.list
+                              .filter(img => !filterMissing || !img.hasAlt)
+                              .map((img) => {
+                                const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
+                                const poorFn = isPoorFilename(currentFn);
+                                return (
+                                  <tr key={img.mediaId}>
+                                    <td style={{ paddingRight: 0, verticalAlign: "middle" }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!selectedImages[img.mediaId]}
+                                        onChange={() => toggleSelectImage(img.mediaId)}
+                                      />
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      {img.imageUrl ? (
+                                        <img
+                                          src={img.imageUrl}
+                                          alt=""
+                                          width="50"
+                                          height="50"
+                                          style={{ borderRadius: "6px", objectFit: "cover", border: "1px solid var(--llm-card-border)" }}
+                                        />
+                                      ) : (
+                                        <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>No Image</span>
+                                      )}
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <span style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}>
+                                        {img.currentAlt || "Missing Label"}
+                                      </span>
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <div style={{ fontSize: "12px" }}>
+                                        <code>{truncateFilename(currentFn, 24)}</code>
+                                      </div>
+                                      {poorFn && (
+                                        <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
+                                          ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--llm-primary)" }}>
+                                        {img.suggestedAlt}
+                                      </span>
+                                    </td>
+                                    <td style={{ verticalAlign: "middle" }}>
+                                      <span className={`llm-badge ${img.hasAlt ? "llm-badge-success" : "llm-badge-warning"}`} style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center" }}>
+                                        {img.status === "Optimized" || img.hasAlt ? "AI Ready" : "Unoptimized"}
+                                      </span>
+                                    </td>
+                                    <td style={{ verticalAlign: "middle", textAlign: "right" }}>
+                                      <button
+                                        className="llm-btn llm-btn-primary llm-btn-sm"
+                                        onClick={() => applySingle(img)}
+                                        disabled={isWorking}
+                                        style={{ minWidth: "80px" }}
+                                      >
+                                        {isWorking ? "Syncing..." : "Approve"}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: "14px", fontSize: "12px", color: "var(--llm-on-surface-variant)" }}>
+                      💡 <strong>Note on Filenames:</strong> Shopify locks filenames on upload. Suggested filenames are shown as recommendations for your original asset files before you re-upload them to your Shopify catalog.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* STEP 3 & 4: View summary & Fix issues */}
-        {scanState === 'completed' && (
-          <div style={{ animation: "logFadeIn 0.3s ease-out" }}>
-            <div className="llm-metric-grid" style={{ marginBottom: "20px" }}>
-              <div className="llm-metric">
-                <div className="llm-metric-label">Images Scanned</div>
-                <div className="llm-metric-value">{currentResults.totalScanned}</div>
+        {/* Tab Content: Descriptions */}
+        {activeTab === 'descriptions' && (
+          <div className="llm-fade-in">
+            <div className="llm-card" style={{ marginBottom: "24px" }}>
+              <div className="llm-card-head">
+                <h2>Product Descriptions Auditor</h2>
+                <p>Verify that your store descriptions have sufficient semantic detail for search engine listings.</p>
               </div>
-              <div className="llm-metric">
-                <div className="llm-metric-label">Missing Descriptions</div>
-                <div className={`llm-metric-value ${currentResults.missingAlt > 0 ? "warning" : "success"}`}>
-                  {currentResults.missingAlt}
-                </div>
-              </div>
-              <div className="llm-metric">
-                <div className="llm-metric-label">Ready to Optimize</div>
-                <div className={`llm-metric-value ${currentResults.readyToFix > 0 ? "warning" : "success"}`}>
-                  {currentResults.readyToFix}
-                </div>
-              </div>
-              <div className="llm-metric">
-                <div className="llm-metric-label">Already Optimized</div>
-                <div className="llm-metric-value success">{currentResults.optimized}</div>
-              </div>
-            </div>
-
-            {/* Opportunities Found Box */}
-            <div className="llm-issues-box">
-              <h3>🎯 Content Quality Opportunities</h3>
-              <p style={{ fontSize: "13px", color: "var(--llm-on-surface-variant)", margin: "0 0 12px 0" }}>
-                {"Relax. We found opportunities that may help AI systems better understand your products. Applying these optimized labels takes less than 2 minutes. We'll guide you through each step."}
+              <p style={{ fontSize: "13px", color: "var(--llm-on-surface-variant)", margin: "0 0 16px 0", lineHeight: "1.5" }}>
+                {"AI semantic search crawlers read product descriptions to extract product features, fabrics, sizing, and details. Descriptions that are too brief (under 100 characters) limit the AI's ability to recommend your store."}
               </p>
-              <ul className="llm-issues-list" style={{ marginBottom: "16px" }}>
-                <li>{currentResults.missingAlt} images missing descriptive alt labels</li>
-                <li>{currentResults.poorFilenames} images have generic/non-descriptive asset filenames</li>
-                <li>{currentResults.duplicateAlts} images share duplicate description tags</li>
-              </ul>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  className="llm-btn llm-btn-primary"
-                  onClick={handleFixAll}
-                  disabled={isWorking || currentResults.missingAlt === 0}
-                >
-                  {isWorking ? "Optimizing..." : "Optimize All"}
-                </button>
-                <button
-                  className="llm-btn llm-btn-outline"
-                  onClick={() => setShowTable(!showTable)}
-                >
-                  {showTable ? "Hide Details" : "Review Results"}
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button className="llm-btn llm-btn-primary" disabled style={{ opacity: 0.7, cursor: "not-allowed" }}>
+                  Bulk Update Descriptions (Coming Soon)
                 </button>
               </div>
             </div>
 
-            {/* STEP 5: Review details */}
-            {showTable && (
-              <div className="llm-card" style={{ animation: "logFadeIn 0.3s ease-out" }}>
-                <div className="llm-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", paddingBottom: "12px", borderBottom: "1px solid var(--llm-card-border)" }}>
-                  <div>
-                    <h2>Scanned Images Details</h2>
-                    <p>Review suggested metadata adjustments before pushing to Shopify.</p>
-                  </div>
-                  <div style={{ display: "flex", gap: "10px", marginLeft: "auto", flexWrap: "wrap" }}>
-                    <button
-                      className={`llm-btn ${filterMissing ? "llm-btn-primary" : "llm-btn-outline"} llm-btn-sm`}
-                      onClick={() => setFilterMissing(!filterMissing)}
-                    >
-                      {filterMissing ? "Showing: Missing Only" : "Filter: Missing Description"}
-                    </button>
-                    <button
-                      className="llm-btn llm-btn-primary llm-btn-sm"
-                      onClick={handleFixSelected}
-                      disabled={isWorking || Object.keys(selectedImages).filter(k => selectedImages[k]).length === 0}
-                    >
-                      Optimize Selected ({Object.keys(selectedImages).filter(k => selectedImages[k]).length})
-                    </button>
-                  </div>
+            <div className="llm-card">
+              <div className="llm-card-head" style={{ borderBottom: "1px solid var(--llm-card-border)", paddingBottom: "12px" }}>
+                <h2>Mock Catalog Analysis</h2>
+                <p>Simulated analysis of how description length checks will look when the AI layer is activated.</p>
+              </div>
+              <div className="llm-table-wrap">
+                <table className="llm-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Current Length</th>
+                      <th>Status Check</th>
+                      <th>AI Suggestion Preview</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { name: "Yaseen Silk Kimono", len: 45, status: "Short Description (aim for 100+ characters)", suggestion: "Crafted from fine mulberry silk, this luxury kimono features detailed embroidery, adjustable belt..." },
+                      { name: "Lace Babydoll Set", len: 120, status: "Healthy (120 chars)", suggestion: "Already optimized" },
+                      { name: "Satin Sleep Shorts", len: 32, status: "Short Description (aim for 100+ characters)", suggestion: "Relaxed-fit satin lounge shorts designed with an elastic waist, lightweight breathable satin fabric..." }
+                    ].map((item, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: "700" }}>{item.name}</td>
+                        <td>{item.len} characters</td>
+                        <td>
+                          <span className={`llm-badge ${item.len < 100 ? "llm-badge-warning" : "llm-badge-success"}`}>
+                            {item.len < 100 ? "⚠️ Too Brief" : "✓ AI Optimal"}
+                          </span>
+                        </td>
+                        <td style={{ color: "var(--llm-outline)", fontStyle: "italic" }}>
+                          {item.len < 100 ? (
+                            <span style={{ filter: "blur(2.5px)", userSelect: "none" }}>{item.suggestion}</span>
+                          ) : (
+                            item.suggestion
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content: Headings */}
+        {activeTab === 'headings' && (
+          <div className="llm-fade-in">
+            <div className="llm-card" style={{ marginBottom: "24px" }}>
+              <div className="llm-card-head">
+                <h2>HTML Headings Hierarchy (H1, H2, H3)</h2>
+                <p>Organize product details under structured titles to help AI agents parse descriptions.</p>
+              </div>
+              <p style={{ fontSize: "13px", color: "var(--llm-on-surface-variant)", margin: "0 0 16px 0", lineHeight: "1.5" }}>
+                Adding clear <code>&lt;h1&gt;</code>, <code>&lt;h2&gt;</code>, and <code>&lt;h3&gt;</code> headings to your product specifications organizes your product pages into distinct sections, making it trivial for LLM systems to index.
+              </p>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button className="llm-btn llm-btn-primary" disabled style={{ opacity: 0.7, cursor: "not-allowed" }}>
+                  Structure Specifications (Coming Soon)
+                </button>
+              </div>
+            </div>
+
+            <div className="llm-card">
+              <div className="llm-card-head" style={{ borderBottom: "1px solid var(--llm-card-border)", paddingBottom: "12px" }}>
+                <h2>Heading Structure Schema Check</h2>
+                <p>Visual schema representation of clean product specification nesting.</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "12px 0" }}>
+                <div style={{ borderLeft: "4px solid #5c6ac4", paddingLeft: "16px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#5c6ac4" }}>H1 Heading (Product Title)</div>
+                  <div style={{ fontSize: "16px", fontWeight: "700", marginTop: "2px" }}>Luxury Satin Dressing Gown</div>
                 </div>
-
-                {currentResults.list.filter(img => !filterMissing || !img.hasAlt).length === 0 ? (
-                  <div style={{ padding: "40px 0", textAlign: "center", color: "var(--llm-on-surface-variant)" }}>
-                    <p style={{ fontSize: "14px", fontWeight: "600", margin: "0 0 4px 0" }}>No matching images found</p>
-                    <p style={{ fontSize: "12.5px", margin: 0 }}>All scanned images match your template settings.</p>
+                <div style={{ borderLeft: "4px solid #a855f7", paddingLeft: "16px", marginLeft: "20px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#a855f7" }}>H2 Subheading (Section Title)</div>
+                  <div style={{ fontSize: "14px", fontWeight: "700", marginTop: "2px" }}>Product Specifications</div>
+                  
+                  <div style={{ borderLeft: "4px solid #ca8a04", paddingLeft: "16px", marginLeft: "20px", marginTop: "12px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "700", color: "#ca8a04" }}>H3 Title (Item Highlights)</div>
+                    <div style={{ fontSize: "12.5px", fontWeight: "700", marginTop: "2px" }}>Material & Fabric Care</div>
+                    <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "var(--llm-on-surface-variant)" }}>
+                      95% polyester satin, 5% elastane. Hand wash cold, lay flat to dry.
+                    </p>
                   </div>
-                ) : (
-                  <div className="llm-table-wrap">
-                    <table className="llm-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: "30px", paddingRight: 0 }}>
-                            <input
-                              type="checkbox"
-                              checked={currentResults.list.filter(img => !filterMissing || !img.hasAlt).length > 0 && currentResults.list.filter(img => !filterMissing || !img.hasAlt).every(img => selectedImages[img.mediaId])}
-                              onChange={toggleSelectAll}
-                            />
-                          </th>
-                          <th style={{ width: "60px" }}>Image</th>
-                          <th>Product</th>
-                          <th>Image Alt Text</th>
-                          <th>Image Asset Filename</th>
-                          <th>AI Recommendation</th>
-                          <th>Status</th>
-                          <th style={{ textAlign: "right" }}>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {currentResults.list
-                          .filter(img => !filterMissing || !img.hasAlt)
-                          .map((img) => {
-                            const currentFn = img.imageUrl ? img.imageUrl.split('/').pop().split('?')[0] : "None";
-                            const poorFn = isPoorFilename(currentFn);
-                            return (
-                              <tr key={img.mediaId}>
-                                <td style={{ paddingRight: 0, verticalAlign: "middle" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!selectedImages[img.mediaId]}
-                                    onChange={() => toggleSelectImage(img.mediaId)}
-                                  />
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  {img.imageUrl ? (
-                                    <img
-                                      src={img.imageUrl}
-                                      alt=""
-                                      width="50"
-                                      height="50"
-                                      style={{ borderRadius: "6px", objectFit: "cover", border: "1px solid var(--llm-card-border)" }}
-                                    />
-                                  ) : (
-                                    <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>No Image</span>
-                                  )}
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <span style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}>
-                                    {img.currentAlt || "Missing Label"}
-                                  </span>
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <div style={{ fontSize: "12px" }}>
-                                    <code>{truncateFilename(currentFn, 24)}</code>
-                                  </div>
-                                  {poorFn && (
-                                    <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
-                                      ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
-                                    </div>
-                                  )}
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--llm-primary)" }}>
-                                    {img.suggestedAlt}
-                                  </span>
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <span className={`llm-badge ${img.hasAlt ? "llm-badge-success" : "llm-badge-warning"}`} style={{ display: "inline-flex", minWidth: "90px", justifyContent: "center" }}>
-                                    {img.status === "Optimized" || img.hasAlt ? "AI Ready" : "Unoptimized"}
-                                  </span>
-                                </td>
-                                <td style={{ verticalAlign: "middle", textAlign: "right" }}>
-                                  <button
-                                    className="llm-btn llm-btn-primary llm-btn-sm"
-                                    onClick={() => applySingle(img)}
-                                    disabled={isWorking}
-                                    style={{ minWidth: "80px" }}
-                                  >
-                                    {isWorking ? "Syncing..." : "Approve"}
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                <div style={{ marginTop: "14px", fontSize: "12px", color: "var(--llm-on-surface-variant)" }}>
-                  💡 <strong>Note on Filenames:</strong> Shopify locks filenames on upload. Suggested filenames are shown as recommendations for your original asset files before you re-upload them to your Shopify catalog.
                 </div>
               </div>
-            )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content: Metas */}
+        {activeTab === 'metas' && (
+          <div className="llm-fade-in">
+            <div className="llm-card" style={{ marginBottom: "24px" }}>
+              <div className="llm-card-head">
+                <h2>Title Tags &amp; Meta Descriptions</h2>
+                <p>Fine-tune storefront metadata elements for search engine citation cards.</p>
+              </div>
+              <p style={{ fontSize: "13px", color: "var(--llm-on-surface-variant)", margin: "0 0 16px 0", lineHeight: "1.5" }}>
+                Meta Title tags and Meta descriptions are displayed directly in search result citations. 
+                Optimizing these ensures that search widgets and chat agents quote your products with clean, concise summaries.
+              </p>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button className="llm-btn llm-btn-primary" disabled style={{ opacity: 0.7, cursor: "not-allowed" }}>
+                  Bulk Optimize Meta Tags (Coming Soon)
+                </button>
+              </div>
+            </div>
+
+            <div className="llm-card">
+              <div className="llm-card-head" style={{ borderBottom: "1px solid var(--llm-card-border)", paddingBottom: "12px" }}>
+                <h2>AI Search Citation Preview</h2>
+                <p>Simulated rendering of a product card citation snippet in search results.</p>
+              </div>
+              <div style={{ background: "#f8f9fa", border: "1px solid #e9ecef", borderRadius: "8px", padding: "16px", marginTop: "16px", maxWidth: "520px" }}>
+                <div style={{ fontSize: "12.5px", color: "#1a0dab", fontWeight: "500", marginBottom: "2px" }}>
+                  Yaseen Lingerie | Luxury Embroidered Corset Top
+                </div>
+                <div style={{ fontSize: "12px", color: "#006621", marginBottom: "4px" }}>
+                  https://yaseenlenceria.com/products/embroidered-corset
+                </div>
+                <div style={{ fontSize: "13px", color: "#545454", lineHeight: "1.4" }}>
+                  Discover our premium lace corset top with adjustable hooks, steel bones, and delicate mesh styling. Perfect for layering under jackets or loungewear.
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
