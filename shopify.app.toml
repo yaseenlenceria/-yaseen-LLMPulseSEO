@@ -1,0 +1,38 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "b190c0ce455219cacad86f3f582ab096"
+name = "LLMPulseSEO"
+application_url = "https://different-balanced-server-particularly.trycloudflare.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_analytics,read_content,read_products,read_themes,write_app_proxy,write_content,write_products,write_themes"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://different-balanced-server-particularly.trycloudflare.com/auth/callback",
+  "https://different-balanced-server-particularly.trycloudflare.com/auth/shopify/callback",
+  "https://different-balanced-server-particularly.trycloudflare.com/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://different-balanced-server-particularly.trycloudflare.com/apps/llms"
+subpath = "llms"
+prefix = "apps"

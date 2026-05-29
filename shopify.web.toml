@@ -1,0 +1,6 @@
+name = "React Router"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+[commands]
+predev = "npm exec prisma generate"
+dev = "node scripts/setup-dev-db.mjs && node ./node_modules/@react-router/dev/bin.js dev"
