@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useLoaderData, useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -187,9 +187,6 @@ export default function ProductImageOptimisation() {
   const [progress, setProgress] = useState(0);
 
 
-  // Settings panel visibility
-  const [showSettings, setShowSettings] = useState(false);
-
   // Inline status banner — replaces rapid right-side toasts
   const [statusBanner, setStatusBanner] = useState(null); // { type: 'success'|'error', msg: string }
 
@@ -199,19 +196,13 @@ export default function ProductImageOptimisation() {
     setTimeout(() => setStatusBanner(null), 4000);
   };
 
-  // Track pending fix operations to prevent loader from overwriting optimistic state
-  const pendingFixRef = useRef(false);
-
   const isWorking = ["loading", "submitting"].includes(fetcher.state);
 
-  // Sync images list from loader — but ONLY for scan operations, not for fix operations.
-  // Fix operations use optimistic updates so we must not reset them when the loader re-fires.
+  // Sync images list from loader when loader data changes, but not while a mutation is in progress
   useEffect(() => {
-    // If a fix is pending, skip resetting — the optimistic update is the source of truth
-    if (pendingFixRef.current) return;
+    if (isWorking) return;
     setImagesList(initialImages);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialImages]);
+  }, [initialImages, isWorking]);
 
   // When fetcher returns scan data, update images list and complete the scan
   useEffect(() => {
@@ -219,9 +210,7 @@ export default function ProductImageOptimisation() {
       setImagesList(fetcher.data.images);
       setScanState('completed');
       setProgress(100);
-      if (scanType === 'selected') setShowTable(true);
-      // No toast — results appear inline below the cards
-      pendingFixRef.current = false;
+      setShowTable(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.data]);
@@ -284,14 +273,9 @@ export default function ProductImageOptimisation() {
       } else if (msg.includes("Bulk update complete") || msg.includes("updated on Shopify")) {
         // Show calm inline banner instead of modal popup
         showBanner('success', `✓ ${msg}`);
-        pendingFixRef.current = false;
-      } else if (!data.images) {
-        // Single fix confirmation — row already updated optimistically, no extra noise
-        pendingFixRef.current = false;
       }
     } else {
       showBanner('error', msg);
-      pendingFixRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.data]);
@@ -321,9 +305,6 @@ export default function ProductImageOptimisation() {
   };
 
   const applySingle = (img) => {
-    // Mark a fix as pending so the loader re-run doesn't overwrite optimistic state
-    pendingFixRef.current = true;
-
     // Optimistically update the item immediately (instant feedback)
     setImagesList(prev => prev.map(item => {
       if (item.mediaId === img.mediaId) {
@@ -351,9 +332,6 @@ export default function ProductImageOptimisation() {
       showBanner('error', 'No images selected or all already have alt text.');
       return;
     }
-
-    // Mark fix as pending before submit
-    pendingFixRef.current = true;
 
     // Optimistically update all targets immediately
     const targetMediaIds = new Set(targets.map(t => t.mediaId));
@@ -480,111 +458,96 @@ export default function ProductImageOptimisation() {
 
   return (
     <s-page heading="Product Image Optimisation">
-      <s-button slot="primary-action" variant="plain" onClick={() => setShowSettings(s => !s)}>
-        {showSettings ? "Hide Settings" : "⚙️ Settings"}
-      </s-button>
-
       <div className="llm-page llm-fade-in">
-        {/* Settings panel — collapsible */}
-        {showSettings && (
-          <div className="llm-card llm-fade-in" style={{ marginBottom: 0 }}>
-            <div className="llm-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <h2>Image Description &amp; Asset Filename Templates</h2>
-                <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
-              </div>
-              <button
-                type="button"
-                className="llm-btn llm-btn-outline llm-btn-sm"
-                onClick={() => setShowSettings(false)}
-                style={{ marginLeft: 16, flexShrink: 0 }}
-              >
-                Close
-              </button>
-            </div>
+        
+        {/* Settings panel — always open */}
+        <div className="llm-card" style={{ marginBottom: "24px" }}>
+          <div className="llm-card-head">
+            <h2>Image Description &amp; Asset Filename Templates</h2>
+            <p>Define rules for auto-generating missing image descriptions and suggested asset filenames.</p>
+          </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
-              <div>
-                <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                  Image Description Template
-                </label>
-                <input
-                  id="alt-template-input"
-                  className="llm-input"
-                  value={altTemplate}
-                  onChange={(e) => setAltTemplate(e.target.value)}
-                  placeholder="#product_name# - #product_type#"
-                />
-                {altError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{altError}</div>}
-                <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
-                  {[
-                    { label: "Product Name Only", value: "#product_name#" },
-                    { label: "Name & Category", value: "#product_name# - #product_type#" },
-                    { label: "Name & Brand", value: "#product_name# by #product_vendor#" },
-                  ].map(preset => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      className="llm-btn llm-btn-outline llm-btn-sm"
-                      style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                      onClick={() => setAltTemplate(preset.value)}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                  Image Asset Filename Template
-                </label>
-                <input
-                  id="filename-template-input"
-                  className="llm-input"
-                  value={filenameTemplate}
-                  onChange={(e) => setFilenameTemplate(e.target.value)}
-                  placeholder="#product_name# - #product_vendor#"
-                />
-                {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
-                <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
-                  {[
-                    { label: "Product Name Only", value: "#product_name#" },
-                    { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
-                    { label: "SKU Only", value: "#variant_sku#" },
-                  ].map(preset => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      className="llm-btn llm-btn-outline llm-btn-sm"
-                      style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
-                      onClick={() => setFilenameTemplate(preset.value)}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: "var(--llm-surface)", borderRadius: "6px", padding: "12px", fontSize: "12px", marginBottom: "12px" }}>
-              <strong style={{ display: "block", marginBottom: "4px" }}>Allowed Variables:</strong>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {["#product_name#", "#product_type#", "#product_vendor#", "#shop_name#", "#variant_sku#", "#variant_barcode#"].map(v => (
-                  <code key={v} style={{ background: "white", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--llm-card-border)" }}>
-                    {v}
-                  </code>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "16px" }}>
+            <div>
+              <label htmlFor="alt-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                Image Description Template
+              </label>
+              <input
+                id="alt-template-input"
+                className="llm-input"
+                value={altTemplate}
+                onChange={(e) => setAltTemplate(e.target.value)}
+                placeholder="#product_name# - #product_type#"
+              />
+              {altError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{altError}</div>}
+              <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
+                {[
+                  { label: "Product Name Only", value: "#product_name#" },
+                  { label: "Name & Category", value: "#product_name# - #product_type#" },
+                  { label: "Name & Brand", value: "#product_name# by #product_vendor#" },
+                ].map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className="llm-btn llm-btn-outline llm-btn-sm"
+                    style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
+                    onClick={() => setAltTemplate(preset.value)}
+                  >
+                    {preset.label}
+                  </button>
                 ))}
               </div>
             </div>
 
-            <button className="llm-btn llm-btn-primary" onClick={saveSettings} disabled={isWorking}>
-              {isWorking ? "Saving…" : "Save Templates"}
-            </button>
+            <div>
+              <label htmlFor="filename-template-input" style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                Image Asset Filename Template
+              </label>
+              <input
+                id="filename-template-input"
+                className="llm-input"
+                value={filenameTemplate}
+                onChange={(e) => setFilenameTemplate(e.target.value)}
+                placeholder="#product_name# - #product_vendor#"
+              />
+              {fileError && <div style={{ color: "var(--llm-error)", fontSize: 11, marginTop: 4 }}>{fileError}</div>}
+              <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", color: "var(--llm-outline)" }}>Presets:</span>
+                {[
+                  { label: "Product Name Only", value: "#product_name#" },
+                  { label: "Name & Brand", value: "#product_name#-#product_vendor#" },
+                  { label: "SKU Only", value: "#variant_sku#" },
+                ].map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className="llm-btn llm-btn-outline llm-btn-sm"
+                    style={{ fontSize: "10.5px", height: "22px", padding: "0 8px", fontWeight: "normal" }}
+                    onClick={() => setFilenameTemplate(preset.value)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        )}
+
+          <div style={{ background: "var(--llm-surface)", borderRadius: "6px", padding: "12px", fontSize: "12px", marginBottom: "12px" }}>
+            <strong style={{ display: "block", marginBottom: "4px" }}>Allowed Variables:</strong>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {["#product_name#", "#product_type#", "#product_vendor#", "#shop_name#", "#variant_sku#", "#variant_barcode#"].map(v => (
+                <code key={v} style={{ background: "white", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--llm-card-border)" }}>
+                  {v}
+                </code>
+              ))}
+            </div>
+          </div>
+
+          <button className="llm-btn llm-btn-primary" onClick={saveSettings} disabled={isWorking}>
+            {isWorking ? "Saving…" : "Save Templates"}
+          </button>
+        </div>
 
         {/* 3-card action selector — always visible */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
@@ -860,9 +823,10 @@ export default function ProductImageOptimisation() {
                             />
                           </th>
                           <th style={{ width: "60px" }}>Image</th>
-                          <th>Product & File Info</th>
+                          <th>Product</th>
                           <th>Image Alt Text</th>
                           <th>Image Asset Filename</th>
+                          <th>AI Recommendation</th>
                           <th>Status</th>
                           <th style={{ textAlign: "right" }}>Action</th>
                         </tr>
@@ -897,19 +861,21 @@ export default function ProductImageOptimisation() {
                                 </td>
                                 <td style={{ verticalAlign: "middle" }}>
                                   <div style={{ fontSize: "13px", fontWeight: "700", lineHeight: "1.3" }}>{img.productName}</div>
-                                  <div style={{ fontSize: "11px", color: "var(--llm-on-surface-variant)", marginTop: "2px" }}>
-                                    File: <code>{truncateFilename(currentFn, 24)}</code>
+                                </td>
+                                <td style={{ verticalAlign: "middle" }}>
+                                  <span style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}>
+                                    {img.currentAlt || "Missing Label"}
+                                  </span>
+                                </td>
+                                <td style={{ verticalAlign: "middle" }}>
+                                  <div style={{ fontSize: "12px" }}>
+                                    <code>{truncateFilename(currentFn, 24)}</code>
                                   </div>
                                   {poorFn && (
                                     <div style={{ fontSize: "10.5px", color: "var(--llm-warning)", marginTop: "2px", fontWeight: "600" }}>
                                       ⚠️ Generic Filename (Tip: rename to <code>{truncateFilename(img.suggestedFilename, 24)}</code> before uploading)
                                     </div>
                                   )}
-                                </td>
-                                <td style={{ verticalAlign: "middle" }}>
-                                  <span style={{ fontSize: "12px", color: img.hasAlt ? "inherit" : "var(--llm-outline)", fontStyle: img.hasAlt ? "normal" : "italic" }}>
-                                    {img.currentAlt || "Missing Label"}
-                                  </span>
                                 </td>
                                 <td style={{ verticalAlign: "middle" }}>
                                   <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--llm-primary)" }}>
